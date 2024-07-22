@@ -12,6 +12,6 @@ wget -O go.tar.gz https://go.dev/dl/go1.22.5.linux-amd64.tar.gz
 
 tar -C /usr/local -xzf go.tar.gz
 
-echo "export PATH=$PATH:/usr/local/go/bin" >> /etc/profile
+echo "export PATH=$PATH:/usr/local/go/bin" >> /root/.bashrc
 
 go version
