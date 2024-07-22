@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# 确保脚本以root权限运行
+if [[ $EUID -ne 0 ]]; then
+   echo "Please run it with root privileges!" 
+   exit 1
+fi
+
+rm -rf /usr/local/go
+
+wget -O go.tar.gz https://go.dev/dl/go1.22.5.linux-amd64.tar.gz
+
+tar -C /usr/local -xzf go.tar.gz
+
+echo "export PATH=$PATH:/usr/local/go/bin" >> /etc/profile
+
+go version
