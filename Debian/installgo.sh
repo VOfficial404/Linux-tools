@@ -14,4 +14,6 @@ tar -C /usr/local -xzf go.tar.gz
 
 echo "export PATH=$PATH:/usr/local/go/bin" >> /root/.bashrc
 
+rm go.tar.gz
+
 go version
