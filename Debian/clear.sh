@@ -68,7 +68,7 @@ apt-get clean > /dev/null 2>&1
 
 # 清空系统日志
 echo "清空系统日志..."
-sudo journalctl --vacuum-time=7d
+journalctl --vacuum-time=7d --vacuum-size=1G > /dev/null 2>&1
 
 end_space=$(df / | tail -n 1 | awk '{print $3}')
 cleared_space=$((start_space - end_space))
