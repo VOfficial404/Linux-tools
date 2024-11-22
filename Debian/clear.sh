@@ -66,6 +66,10 @@ apt-get autoclean > /dev/null 2>&1
 apt-get autoremove -y > /dev/null 2>&1
 apt-get clean > /dev/null 2>&1
 
+# 清空系统日志
+echo "清空系统日志..."
+sudo journalctl --vacuum-time=7d
+
 end_space=$(df / | tail -n 1 | awk '{print $3}')
 cleared_space=$((start_space - end_space))
 echo "系统清理完成，清理了 $((cleared_space / 1024))M 空间！"
