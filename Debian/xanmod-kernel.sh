@@ -10,3 +10,15 @@ apt-get update && apt-get install linux-xanmod-x64v3
 
 echo "net.ipv4.tcp_congestion_control = bbr" >> /etc/sysctl.conf
 echo "net.core.default_qdisc = fq_pie" >> /etc/sysctl.conf
+
+echo "是否要重启系统？(y/n)"
+read user_input
+
+if [ "$user_input" == "y" ]; then
+    echo "系统即将重启..."
+    sudo reboot
+elif [ "$user_input" == "n" ]; then
+    echo "系统不会重启"
+else
+    echo "无效输入，请输入 'y' 或 'n'。"
+fi
