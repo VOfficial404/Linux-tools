@@ -1,6 +1,6 @@
 #!/bin/bash
 
-apt-get update -y && apt-get dist-upgrade curl git wget unzip gpg -y
+apt-get update -y && apt-get dist-upgrade curl wget unzip gpg -y
 
 wget -qO - https://dl.xanmod.org/archive.key | gpg --dearmor -vo /usr/share/keyrings/xanmod-archive-keyring.gpg
 
