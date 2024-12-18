@@ -21,6 +21,7 @@ cp /etc/fstab /etc/fstab.bak
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 echo "vm.swappiness = 100" >> /etc/sysctl.conf
 echo "已自动创建1G的SWAP 防止小内存机器失联"
+fi
 
 apt-get update -y && apt-get dist-upgrade curl wget unzip gpg -y
 
