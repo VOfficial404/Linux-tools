@@ -1,5 +1,17 @@
 #!/bin/bash
 
+# 检查是否以root用户运行
+if [ "$(id -u)" -ne 0 ]; then
+  echo "请使用root权限运行此脚本"
+  exit 1
+fi
+
+# 检查是否已经有交换空间
+if swapon --show | grep -q 'swap'; then
+  echo "系统已存在SWAP"
+else
+  echo "未检测到SWAP，正在创建1G的交换空间..."
+
 fallocate -l 1G /swapfile
 chmod 600 /swapfile
 mkswap /swapfile
