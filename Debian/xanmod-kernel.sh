@@ -32,6 +32,7 @@ echo 'deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.gpg] http://deb.
 apt-get update && apt-get install linux-xanmod-x64v3 -y
 
 echo "net.ipv4.tcp_congestion_control = bbr" >> /etc/sysctl.conf
+
 echo "net.core.default_qdisc = fq_pie" >> /etc/sysctl.conf
 
 echo "是否要重启系统？(y/n)"
