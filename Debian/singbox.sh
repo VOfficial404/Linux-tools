@@ -28,7 +28,8 @@ curl -fsSL https://sing-box.app/gpg.key -o /etc/apt/keyrings/sagernet.asc
 chmod a+r /etc/apt/keyrings/sagernet.asc
 
 echo "deb [arch=dpkg --print-architecture signed-by=/etc/apt/keyrings/sagernet.asc] https://deb.sagernet.org/ * *" | \
-   tee /etc/apt/sources.list.d/sagernet.list > /dev/null
+   
+tee /etc/apt/sources.list.d/sagernet.list > /dev/null
 
 apt-get update
 
