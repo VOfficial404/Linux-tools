@@ -34,4 +34,4 @@ apt-get update
 
 apt-get install sing-box -y
 
-sing-box -version
+sing-box version
