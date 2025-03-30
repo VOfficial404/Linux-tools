@@ -143,9 +143,9 @@ clean_docker() {
     
     echo -e "\n${GREEN}=== Docker 清理 ===${NC}"
     
-    # 用于转换存储单位的函数
+    # 用于转换存储单位的函数 (修复$1未绑定问题)
     convert_size() {
-        local input=$1
+        local input="${1:-0B}"  # 设置默认值
         echo "$input" | sed '
             s/\([0-9.]*\)KB/\1K/i;
             s/\([0-9.]*\)MB/\1M/i;
@@ -159,7 +159,7 @@ clean_docker() {
     if [[ "$DOCKER_CLEAN_LEVEL" == "full" ]]; then
         echo -e "${YELLOW}清理悬空镜像...${NC}"
         docker image prune -a -f
-        CLEAN_STATS["docker_images"]=$(docker system df --format '{{.TotalSpace}}' | convert_size | numfmt --from=iec)
+        CLEAN_STATS["docker_images"]=$(docker system df --format '{{.Size}}' | awk '{print $1}' | convert_size | numfmt --from=iec)
         
         echo -e "${YELLOW}清理未使用网络...${NC}"
         CLEAN_STATS["docker_networks"]=$(docker network prune --force --filter until=24h 2>&1 | awk '/Total reclaimed space:/ {print $4}' | convert_size | numfmt --from=iec)
