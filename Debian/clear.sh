@@ -76,9 +76,11 @@ clean_kernels() {
         printf '• %s\n' "${to_remove[@]}"
         
         if ! $DRY_RUN; then
+            local before=$(space_used)
             apt-get purge -y "${to_remove[@]}"
             update-grub
-            CLEAN_STATS["kernel"]=$(( $(space_used) - CLEAN_STATS["kernel"] ))
+            local after=$(space_used)
+            CLEAN_STATS["kernel"]=$((before - after))
         fi
     else
         echo "没有可删除的旧内核"
@@ -96,8 +98,10 @@ clean_orphans() {
         printf '• %s\n' "${orphans[@]}"
         
         if ! $DRY_RUN; then
+            local before=$(space_used)
             apt-get purge -y "${orphans[@]}"
-            CLEAN_STATS["orphans"]=$(( $(space_used) - CLEAN_STATS["orphans"] ))
+            local after=$(space_used)
+            CLEAN_STATS["orphans"]=$((before - after))
         fi
     else
         echo "未找到可清理的孤立包"
@@ -107,34 +111,34 @@ clean_orphans() {
 # 清理系统日志
 clean_logs() {
     echo -e "\n${GREEN}=== 日志清理 ===${NC}"
-    # 清理系统日志
+    local before=$(space_used)
     find /var/log -type f -name "*.log" -exec truncate -s 0 {} \;
-    # 清理root日志
     find /root -type f -name "*.log" -exec truncate -s 0 {} \;
-    # 清理journal日志
     journalctl --vacuum-time="${KEEP_LOGS_DAYS}d" --vacuum-size=1G
-    CLEAN_STATS["logs"]=$(( $(space_used) - CLEAN_STATS["logs"] ))
+    local after=$(space_used)
+    CLEAN_STATS["logs"]=$((before - after))
 }
 
 # 清理缓存
 clean_cache() {
     echo -e "\n${GREEN}=== 缓存清理 ===${NC}"
-    # 系统缓存
+    local before=$(space_used)
     rm -rf -- /tmp/* /var/tmp/*
-    # 用户缓存
     find /home -type d -name ".cache" -exec rm -rf {} \;
-    # APT缓存
     rm -rf /var/cache/apt/archives/*
-    CLEAN_STATS["cache"]=$(( $(space_used) - CLEAN_STATS["cache"] ))
+    local after=$(space_used)
+    CLEAN_STATS["cache"]=$((before - after))
 }
 
 # 清理APT
 clean_apt() {
     echo -e "\n${GREEN}=== 包管理器清理 ===${NC}"
+    local before=$(space_used)
     apt-get autoclean -y
     apt-get autoremove -y
     apt-get clean -y
-    CLEAN_STATS["apt"]=$(( $(space_used) - CLEAN_STATS["apt"] ))
+    local after=$(space_used)
+    CLEAN_STATS["apt"]=$((before - after))
 }
 
 # Docker清理
@@ -143,9 +147,8 @@ clean_docker() {
     
     echo -e "\n${GREEN}=== Docker 清理 ===${NC}"
     
-    # 用于转换存储单位的函数 (修复$1未绑定问题)
     convert_size() {
-        local input="${1:-0B}"  # 设置默认值
+        local input="${1:-0B}"
         echo "$input" | sed '
             s/\([0-9.]*\)KB/\1K/i;
             s/\([0-9.]*\)MB/\1M/i;
@@ -159,7 +162,7 @@ clean_docker() {
     if [[ "$DOCKER_CLEAN_LEVEL" == "full" ]]; then
         echo -e "${YELLOW}清理悬空镜像...${NC}"
         docker image prune -a -f
-        CLEAN_STATS["docker_images"]=$(docker system df --format '{{.Size}}' | awk '{print $1}' | convert_size | numfmt --from=iec)
+        CLEAN_STATS["docker_images"]=$(docker system df --format '{{.Size}}' | awk '/GB|MB|KB/ {print $1}' | convert_size | numfmt --from=iec)
         
         echo -e "${YELLOW}清理未使用网络...${NC}"
         CLEAN_STATS["docker_networks"]=$(docker network prune --force --filter until=24h 2>&1 | awk '/Total reclaimed space:/ {print $4}' | convert_size | numfmt --from=iec)
@@ -190,6 +193,11 @@ main() {
     local end_space=$(space_used)
     local total_cleared=$((start_space - end_space))
     
+    # 确保所有统计值为正数
+    for key in "${!CLEAN_STATS[@]}"; do
+        CLEAN_STATS[$key]=$((${CLEAN_STATS[$key]} < 0 ? 0 : ${CLEAN_STATS[$key]}))
+    done
+
     echo -e "\n${GREEN}=== 清理统计 ===${NC}"
     printf "%-20s %15s\n" "清理项目" "释放空间(KB)"
     printf "%-20s %'15d\n" "旧内核" "${CLEAN_STATS[kernel]}"
