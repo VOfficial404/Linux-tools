@@ -162,7 +162,7 @@ clean_docker() {
 
 # === 主程序 ===
 main() {
-    [[ $EUID -ne  ]] && { echo -e "${RED}需要root权限!${NC}"; exit 1; }
+    [[ $EUID -ne 0 ]] && { echo -e "${RED}需要root权限!${NC}"; exit 1; }
     
     local start_space=$(space_used)
     
