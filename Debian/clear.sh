@@ -143,18 +143,29 @@ clean_docker() {
     
     echo -e "\n${GREEN}=== Docker 清理 ===${NC}"
     
+    # 用于转换存储单位的函数
+    convert_size() {
+        local input=$1
+        echo "$input" | sed '
+            s/\([0-9.]*\)KB/\1K/i;
+            s/\([0-9.]*\)MB/\1M/i;
+            s/\([0-9.]*\)GB/\1G/i;
+            s/\([0-9.]*\)TB/\1T/i;
+            s/B//i;
+            s/ //g;
+            s/^$/0/'
+    }
+
     if [[ "$DOCKER_CLEAN_LEVEL" == "full" ]]; then
-        # 清理镜像（兼容旧版Docker）
+        echo -e "${YELLOW}清理悬空镜像...${NC}"
         docker image prune -a -f
-        CLEAN_STATS["docker_images"]=$(docker system df --format '{{.Type}}\t{{.Size}}' | awk -F'\t' '/Images/ {print $2}' | numfmt --from=iec)
+        CLEAN_STATS["docker_images"]=$(docker system df --format '{{.TotalSpace}}' | convert_size | numfmt --from=iec)
         
-        # 清理网络
-        docker network prune -f
-        CLEAN_STATS["docker_networks"]=$(docker network prune --force --filter until=24h 2>&1 | grep 'Total reclaimed space:' | awk '{print $4}' | numfmt --from=iec)
+        echo -e "${YELLOW}清理未使用网络...${NC}"
+        CLEAN_STATS["docker_networks"]=$(docker network prune --force --filter until=24h 2>&1 | awk '/Total reclaimed space:/ {print $4}' | convert_size | numfmt --from=iec)
         
-        # 清理卷
-        docker volume prune -f
-        CLEAN_STATS["docker_volumes"]=$(docker volume prune --force --filter 'label!=keep' 2>&1 | grep 'Total reclaimed space:' | awk '{print $4}' | numfmt --from=iec)
+        echo -e "${YELLOW}清理孤立卷...${NC}"
+        CLEAN_STATS["docker_volumes"]=$(docker volume prune --force --filter 'label!=keep' 2>&1 | awk '/Total reclaimed space:/ {print $4}' | convert_size | numfmt --from=iec)
     else
         docker system prune -af --volumes
     fi
@@ -170,7 +181,7 @@ main() {
     
     echo -e "\n${GREEN}=== 开始系统清理 ===${NC}"
     clean_kernels
-    clean_orphans  # 现在已正确定义
+    clean_orphans
     clean_logs
     clean_cache
     clean_docker
@@ -180,16 +191,16 @@ main() {
     local total_cleared=$((start_space - end_space))
     
     echo -e "\n${GREEN}=== 清理统计 ===${NC}"
-    printf "%-20s %15s\n" "清理项目" "释放空间"
-    printf "%-20s %15d KB\n" "旧内核" "${CLEAN_STATS[kernel]}"
-    printf "%-20s %15d KB\n" "孤立包" "${CLEAN_STATS[orphans]}"
-    printf "%-20s %15d KB\n" "系统日志" "${CLEAN_STATS[logs]}"
-    printf "%-20s %15d KB\n" "缓存文件" "${CLEAN_STATS[cache]}"
-    printf "%-20s %15d KB\n" "Docker镜像" "${CLEAN_STATS[docker_images]}"
-    printf "%-20s %15d KB\n" "Docker卷" "${CLEAN_STATS[docker_volumes]}"
-    printf "%-20s %15d KB\n" "Docker网络" "${CLEAN_STATS[docker_networks]}"
-    printf "%-20s %15d KB\n" "APT缓存" "${CLEAN_STATS[apt]}"
-    printf "%-20s %15d KB\n" "总计" "$total_cleared"
+    printf "%-20s %15s\n" "清理项目" "释放空间(KB)"
+    printf "%-20s %'15d\n" "旧内核" "${CLEAN_STATS[kernel]}"
+    printf "%-20s %'15d\n" "孤立包" "${CLEAN_STATS[orphans]}"
+    printf "%-20s %'15d\n" "系统日志" "${CLEAN_STATS[logs]}"
+    printf "%-20s %'15d\n" "缓存文件" "${CLEAN_STATS[cache]}"
+    printf "%-20s %'15d\n" "Docker镜像" "${CLEAN_STATS[docker_images]}"
+    printf "%-20s %'15d\n" "Docker卷" "${CLEAN_STATS[docker_volumes]}"
+    printf "%-20s %'15d\n" "Docker网络" "${CLEAN_STATS[docker_networks]}"
+    printf "%-20s %'15d\n" "APT缓存" "${CLEAN_STATS[apt]}"
+    printf "%-20s %'15d\n" "总计" "$total_cleared"
     
     echo -e "\n${GREEN}操作完成! 详细日志: $LOG_FILE${NC}"
 }
