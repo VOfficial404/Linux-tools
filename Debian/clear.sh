@@ -144,17 +144,17 @@ clean_docker() {
     echo -e "\n${GREEN}=== Docker 清理 ===${NC}"
     
     if [[ "$DOCKER_CLEAN_LEVEL" == "full" ]]; then
-        # 清理镜像
+        # 清理镜像（兼容旧版Docker）
         docker image prune -a -f
-        CLEAN_STATS["docker_images"]=$(docker system df | awk '/Images/{gsub(/[A-Za-z]+/, "", $4); print $4*1024*1024}')
+        CLEAN_STATS["docker_images"]=$(docker system df --format '{{.Type}}\t{{.Size}}' | awk -F'\t' '/Images/ {print $2}' | numfmt --from=iec)
         
         # 清理网络
         docker network prune -f
-        CLEAN_STATS["docker_networks"]=$(docker network prune --force --filter until=24h 2>&1 | grep 'Total reclaimed space:' | awk '{gsub(/[A-Za-z]+/, "", $4); print $4*1024*1024}')
+        CLEAN_STATS["docker_networks"]=$(docker network prune --force --filter until=24h 2>&1 | grep 'Total reclaimed space:' | awk '{print $4}' | numfmt --from=iec)
         
         # 清理卷
         docker volume prune -f
-        CLEAN_STATS["docker_volumes"]=$(docker volume prune --force --filter 'label!=keep' 2>&1 | grep 'Total reclaimed space:' | awk '{gsub(/[A-Za-z]+/, "", $4); print $4*1024*1024}')
+        CLEAN_STATS["docker_volumes"]=$(docker volume prune --force --filter 'label!=keep' 2>&1 | grep 'Total reclaimed space:' | awk '{print $4}' | numfmt --from=iec)
     else
         docker system prune -af --volumes
     fi
