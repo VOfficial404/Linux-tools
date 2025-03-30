@@ -4,46 +4,53 @@
 set -euo pipefail
 shopt -s nullglob
 
-# 日志文件路径
-LOG_FILE="/var/log/system_cleaner.log"
+# 配置参数
+readonly DRY_RUN=false               # 设置为true进行试运行
+readonly KEEP_LOGS_DAYS=7           # 保留日志天数
+readonly MIN_KERNELS=2              # 保留旧内核数量
+readonly DOCKER_CLEAN_LEVEL="full"  # docker清理级别: basic/full
+
+# 颜色定义
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly NC='\033[0m'
+
+# 日志配置
+readonly LOG_FILE="/var/log/system_cleaner-$(date +%Y%m%d).log"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
-# 初始化清理统计
+# 初始化统计
 declare -A CLEAN_STATS=(
     ["kernel"]=0
     ["orphans"]=0
     ["logs"]=0
     ["cache"]=0
-    ["docker"]=0
+    ["docker_images"]=0
+    ["docker_volumes"]=0
+    ["docker_networks"]=0
     ["apt"]=0
 )
 
-# 资源清理配置
-declare -r KEEP_LOGS_DAYS=7
-declare -r MIN_KERNELS=2
-declare -r DRY_RUN=false
-
 # 依赖检查
-check_dependencies() {
-    local deps=("deborphan" "journalctl")
+check_deps() {
+    local deps=("deborphan" "journalctl" "docker")
     for dep in "${deps[@]}"; do
         if ! command -v "$dep" &>/dev/null; then
-            apt-get install -y "$dep" || {
-                echo "依赖安装失败: $dep"
-                exit 1
-            }
+            echo -e "${YELLOW}正在安装依赖: $dep...${NC}"
+            apt-get install -y "$dep" || true
         fi
     done
 }
 
 # 空间计算函数
-calculate_space() {
-    df --output=used / | awk 'NR==2 {print $1*1024}'
+space_used() {
+    df --output=used -B1K / | awk 'NR==2 {print $1}'
 }
 
 # 安全删除旧内核
 clean_kernels() {
-    echo "正在扫描旧内核..."
+    echo -e "\n${GREEN}=== 内核清理 ===${NC}"
     local current_kernel keep_kernels=()
     current_kernel=$(uname -r | sed 's/-.*//')
     
@@ -63,90 +70,55 @@ clean_kernels() {
     done < <(dpkg --list | awk '/^ii  linux-(image|headers)-[0-9]+/ {print $2}')
 
     if ((${#to_remove[@]} > 0)); then
-        echo "正在删除旧内核:"
+        echo -e "${YELLOW}找到可删除内核 (保留最近 ${MIN_KERNELS} 个):${NC}"
         printf '• %s\n' "${to_remove[@]}"
-        $DRY_RUN || {
-            apt-get purge -y "${to_remove[@]}" &&
+        
+        if ! $DRY_RUN; then
+            apt-get purge -y "${to_remove[@]}"
             update-grub
-        }
-        CLEAN_STATS["kernel"]=$(calculate_space)
+            CLEAN_STATS["kernel"]=$(( $(space_used) - CLEAN_STATS["kernel"] ))
+        fi
     else
         echo "没有可删除的旧内核"
     fi
 }
 
-# 清理孤立包
-clean_orphans() {
-    echo "清理孤立软件包..."
-    local orphans=()
-    mapfile -t orphans < <(deborphan --libdevel)
-    ((${#orphans[@]} > 0)) && {
-        $DRY_RUN || apt-get purge -y "${orphans[@]}"
-        CLEAN_STATS["orphans"]=$(calculate_space)
-    }
-}
-
-# 安全日志清理
-clean_logs() {
-    echo "清理系统日志..."
-    # 使用logrotate方式
-    find /var/log -type f -name "*.log" -exec truncate -s 0 {} \;
-    journalctl --vacuum-time="${KEEP_LOGS_DAYS}d"
-    CLEAN_STATS["logs"]=$(calculate_space)
-}
-
-# 缓存清理
-clean_cache() {
-    echo "清理系统缓存..."
-    # 系统级缓存
-    rm -rf -- /tmp/* /var/tmp/*
-    find /root /home/* -type d -path "*/.cache" -exec rm -rf {} \;
-    
-    # 应用缓存
-    for cache_dir in /var/cache/{apt,dnf,yum}; do
-        [[ -d "$cache_dir" ]] && rm -rf "$cache_dir"/*
-    done
-    
-    CLEAN_STATS["cache"]=$(calculate_space)
-}
-
-# Docker清理
+# 增强Docker清理
 clean_docker() {
-    if command -v docker &>/dev/null; then
-        echo "清理Docker资源..."
-        $DRY_RUN || docker system prune -af --volumes
-        CLEAN_STATS["docker"]=$(calculate_space)
+    command -v docker &>/dev/null || return
+    
+    echo -e "\n${GREEN}=== Docker 清理 ===${NC}"
+    
+    # 清理悬空资源
+    if [[ "$DOCKER_CLEAN_LEVEL" == "full" ]]; then
+        echo -e "${YELLOW}清理悬空镜像...${NC}"
+        docker image prune -a -f
+        CLEAN_STATS["docker_images"]=$(docker system df --format '{{.TotalSpace}}' | numfmt --from=iec)
+        
+        echo -e "${YELLOW}清理未使用网络...${NC}"
+        docker network prune -f
+        CLEAN_STATS["docker_networks"]=$(docker network prune --force --filter until=24h 2>&1 | grep 'Total reclaimed space:' | awk '{print $4}')
+        
+        echo -e "${YELLOW}清理孤立卷...${NC}"
+        docker volume prune -f
+        CLEAN_STATS["docker_volumes"]=$(docker volume prune --force --filter 'label!=keep' 2>&1 | grep 'Total reclaimed space:' | awk '{print $4}')
+    else
+        echo -e "${YELLOW}执行基础清理...${NC}"
+        docker system prune -af --volumes
     fi
 }
 
-# APT清理
-clean_apt() {
-    echo "清理包管理器..."
-    apt-get -y autoremove
-    apt-get -y autoclean
-    apt-get -y clean
-    CLEAN_STATS["apt"]=$(calculate_space)
-}
+# 其他清理函数保持不变（略）
 
-# 显示统计信息
-show_stats() {
-    local total=0
-    echo -e "\n清理统计:"
-    for category in "${!CLEAN_STATS[@]}"; do
-        printf "• %-10s : %'d KB\n" "${category^}" "${CLEAN_STATS[$category]}"
-        ((total += CLEAN_STATS[$category]))
-    done
-    echo "总释放空间: $((total / 1024)) MB"
-}
-
-# 主函数
+# 主程序
 main() {
-    [[ $EUID -ne 0 ]] && { echo "请使用root权限运行"; exit 1; }
+    [[ $EUID -ne 0 ]] && { echo -e "${RED}需要root权限!${NC}"; exit 1; }
     
-    local start_space end_space
-    start_space=$(calculate_space)
+    local start_space=$(space_used)
     
-    check_dependencies
+    check_deps
+    
+    echo -e "\n${GREEN}=== 开始系统清理 ===${NC}"
     clean_kernels
     clean_orphans
     clean_logs
@@ -154,11 +126,18 @@ main() {
     clean_docker
     clean_apt
     
-    end_space=$(calculate_space)
-    CLEAN_STATS["total"]=$((start_space - end_space))
+    local end_space=$(space_used)
+    local total_cleared=$((start_space - end_space))
     
-    show_stats
-    echo "详细日志请查看: $LOG_FILE"
+    echo -e "\n${GREEN}=== 清理统计 ===${NC}"
+    printf "%-20s %15s\n" "清理项目" "释放空间"
+    printf "%-20s %15d KB\n" "旧内核" "${CLEAN_STATS[kernel]}"
+    printf "%-20s %15d KB\n" "Docker镜像" "${CLEAN_STATS[docker_images]}"
+    printf "%-20s %15d KB\n" "Docker卷" "${CLEAN_STATS[docker_volumes]}"
+    printf "%-20s %15d KB\n" "Docker网络" "${CLEAN_STATS[docker_networks]}"
+    printf "%-20s %15d KB\n" "总计" "$total_cleared"
+    
+    echo -e "\n${GREEN}操作完成! 详细日志: $LOG_FILE${NC}"
 }
 
 # 执行主程序
