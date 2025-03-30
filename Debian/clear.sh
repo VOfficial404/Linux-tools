@@ -146,15 +146,15 @@ clean_docker() {
     if [[ "$DOCKER_CLEAN_LEVEL" == "full" ]]; then
         # 清理镜像
         docker image prune -a -f
-        CLEAN_STATS["docker_images"]=$(docker system df --format '{{.TotalSpace}}' | numfmt --from=iec)
+        CLEAN_STATS["docker_images"]=$(docker system df | awk '/Images/{gsub(/[A-Za-z]+/, "", $4); print $4*1024*1024}')
         
         # 清理网络
         docker network prune -f
-        CLEAN_STATS["docker_networks"]=$(docker network prune --force --filter until=24h 2>&1 | grep 'Total reclaimed space:' | awk '{print $4}')
+        CLEAN_STATS["docker_networks"]=$(docker network prune --force --filter until=24h 2>&1 | grep 'Total reclaimed space:' | awk '{gsub(/[A-Za-z]+/, "", $4); print $4*1024*1024}')
         
         # 清理卷
         docker volume prune -f
-        CLEAN_STATS["docker_volumes"]=$(docker volume prune --force --filter 'label!=keep' 2>&1 | grep 'Total reclaimed space:' | awk '{print $4}')
+        CLEAN_STATS["docker_volumes"]=$(docker volume prune --force --filter 'label!=keep' 2>&1 | grep 'Total reclaimed space:' | awk '{gsub(/[A-Za-z]+/, "", $4); print $4*1024*1024}')
     else
         docker system prune -af --volumes
     fi
