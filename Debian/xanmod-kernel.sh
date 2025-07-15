@@ -87,8 +87,6 @@ apt-get install -y linux-xanmod-x64v3
   echo "net.ipv4.tcp_timestamps = 1"
   echo "net.ipv4.tcp_tw_reuse = 1"
   echo "net.ipv4.tcp_fin_timeout = 60"
-  echo "net.core.default_qdisc = fq"
-  echo "net.ipv4.tcp_congestion_control = bbr"
   echo "net.ipv4.tcp_ecn = 2"
   echo "net.ipv4.tcp_max_syn_backlog = 8192"
   echo "net.ipv4.tcp_max_tw_buckets = 16384"
