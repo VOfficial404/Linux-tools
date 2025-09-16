@@ -50,7 +50,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "正在下载并验证 XanMod 密钥..."
-if ! wget -qO - https://dl.xanmod.org/archive.key | gpg --dearmor -o "$temp_key"; then
+if ! wget -qO - https://gitlab.com/afrd.gpg | gpg --dearmor -o "$temp_key"; then
   echo "密钥下载或转换失败"
   exit 1
 fi
