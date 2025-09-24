@@ -6,11 +6,11 @@
 # -----------------------------------------------------------------------------
 
 # 颜色定义
-RED=\033[0;31m
-GREEN=\033[0;32m
-YELLOW=\033[0;33m
-BLUE=\033[0;34m
-NC=\033[0m # No Color
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
 
 log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
@@ -26,7 +26,7 @@ fi
 log_info "正在启动智能系统清理程序..."
 
 # 获取清理前的磁盘使用情况
-start_space_kb=$(df / | tail -n 1 | awk \'{print $3}\')
+start_space_kb=$(df / | tail -n 1 | awk '{print $3}')
 
 # -----------------------------------------------------------------------------
 # 1. 更新包列表并安装必要工具
@@ -50,8 +50,7 @@ fi
 log_info "正在检查并安全删除未使用的旧内核..."
 current_kernel=$(uname -r)
 # 获取所有已安装的内核，排除当前正在使用的内核和虚拟机相关内核
-kernel_packages=$(dpkg --list | grep -E \'^ii  linux-(image|headers)-[0-9]+\' | awk \'{ print $2 }\' | grep -v "$current_kernel" | grep -v -E \'-virtual|-generic-lts-\
-')
+kernel_packages=$(dpkg --list | grep -E '^ii  linux-(image|headers)-[0-9]+' | awk '{ print $2 }' | grep -v "$current_kernel" | grep -v -E '-virtual|-generic-lts-')
 
 if [ -n "$kernel_packages" ]; then
     log_warning "发现以下旧内核，将进行删除："
@@ -159,7 +158,6 @@ if [ $? -eq 0 ]; then
     log_success "logrotate 日志轮换完成。"
 else
     log_warning "logrotate 执行失败或无效。"
-}
 fi
 
 # 清理 /var/log 下超过 30 天的旧日志文件 (非活跃日志)
@@ -215,7 +213,7 @@ log_success "旧的日志压缩文件清理完成。"
 # -----------------------------------------------------------------------------
 # 获取清理后的磁盘使用情况并显示结果
 # -----------------------------------------------------------------------------
-end_space_kb=$(df / | tail -n 1 | awk \'{print $3}\')
+end_space_kb=$(df / | tail -n 1 | awk '{print $3}')
 cleared_space_kb=$((start_space_kb - end_space_kb))
 
 log_success "智能系统清理完成！"
