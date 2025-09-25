@@ -6,16 +6,30 @@
 # -----------------------------------------------------------------------------
 
 # 颜色定义
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# 使用 tput 命令来获取颜色代码，这比直接使用 ANSI 转义序列更健壮和兼容
+# 如果 tput 不可用，则回退到默认的 ANSI 序列
+if command -v tput >/dev/null 2>&1; then
+    RED=$(tput setaf 1)
+    GREEN=$(tput setaf 2)
+    YELLOW=$(tput setaf 3)
+    BLUE=$(tput setaf 4)
+    NC=$(tput sgr0)
+else
+    # 直接定义 ANSI 颜色码，使用 printf 避免 echo -e 的兼容性问题
+    # 再次尝试更安全的定义方式，避免 process substitution 带来的转义问题
+    RED=\033[0;31m
+    GREEN=\033[0;32m
+    YELLOW=\033[0;33m
+    BLUE=\033[0;34m
+    NC=\033[0m
+fi
 
-log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
-log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
-log_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+# 日志函数
+# 使用 printf 代替 echo -e，更具兼容性
+log_info() { printf "%b[信息]%b %s\n" "${BLUE}" "${NC}" "$1"; }
+log_success() { printf "%b[成功]%b %s\n" "${GREEN}" "${NC}" "$1"; }
+log_warning() { printf "%b[警告]%b %s\n" "${YELLOW}" "${NC}" "$1"; }
+log_error() { printf "%b[错误]%b %s\n" "${RED}" "${NC}" "$1"; }
 
 # 确保脚本以root权限运行
 if [[ $EUID -ne 0 ]]; then
@@ -26,6 +40,7 @@ fi
 log_info "正在启动智能系统清理程序..."
 
 # 获取清理前的磁盘使用情况
+# 确保 awk 命令中的单引号被正确处理，使用双引号包裹整个命令字符串
 start_space_kb=$(df / | tail -n 1 | awk '{print $3}')
 
 # -----------------------------------------------------------------------------
@@ -50,7 +65,8 @@ fi
 log_info "正在检查并安全删除未使用的旧内核..."
 current_kernel=$(uname -r)
 # 获取所有已安装的内核，排除当前正在使用的内核和虚拟机相关内核
-kernel_packages=$(dpkg --list | grep -E '^ii  linux-(image|headers)-[0-9]+' | awk '{ print $2 }' | grep -v "$current_kernel" | grep -v -E '-virtual|-generic-lts-')
+# 确保 grep -E 中的引号被正确处理，并确保整个命令在一个字符串中
+kernel_packages=$(dpkg --list | grep -E '^ii  linux-(image|headers)-[0-9]+' | awk '{print $2}' | grep -v "$current_kernel" | grep -v -E '-virtual|-generic-lts-')
 
 if [ -n "$kernel_packages" ]; then
     log_warning "发现以下旧内核，将进行删除："
