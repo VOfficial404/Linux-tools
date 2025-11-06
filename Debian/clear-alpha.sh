@@ -288,7 +288,11 @@ print_separator
 if [ -d "/var/cache/apt/archives" ]; then
     apt_cache_size=$(du -sh /var/cache/apt/archives 2>/dev/null | cut -f1)
     apt_debs=$(find /var/cache/apt/archives -type f -name "*.deb" 2>/dev/null)
-    deb_count=$(echo "$apt_debs" | grep -c "\.deb$" || echo "0")
+    if [ -n "$apt_debs" ]; then
+        deb_count=$(echo "$apt_debs" | wc -l)
+    else
+        deb_count=0
+    fi
     
     echo "APT 缓存目录大小: $apt_cache_size"
     echo "缓存包数量: $deb_count 个"
