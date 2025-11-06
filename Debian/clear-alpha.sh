@@ -63,8 +63,8 @@ fi
 log_info "正在检查并安全删除未使用的旧内核..."
 current_kernel=$(uname -r)
 # 获取所有已安装的内核,排除当前正在使用的内核和虚拟机相关内核
-# 确保 grep -E 中的引号被正确处理,并确保整个命令在一个字符串中
-kernel_packages=$(dpkg --list | grep -E '^ii  linux-(image|headers)-[0-9]+' | awk '{print $2}' | grep -v "$current_kernel" | grep -v -E '-virtual|-generic-lts-')
+# 使用 grep -F (固定字符串匹配) 和 -- 来避免内核版本被误解析为选项
+kernel_packages=$(dpkg --list | grep -E '^ii  linux-(image|headers)-[0-9]+' | awk '{print $2}' | grep -vF -- "$current_kernel" | grep -vE -- '-virtual|-generic-lts-')
 
 if [ -n "$kernel_packages" ]; then
     log_warning "发现以下旧内核,将进行删除:"
