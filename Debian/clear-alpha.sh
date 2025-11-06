@@ -1,8 +1,9 @@
 #!/bin/bash
 
 # -----------------------------------------------------------------------------
-# 智能系统清理脚本
+# 智能系统清理脚本 v2.0
 # 旨在最大化释放无用文件的同时,避免清理掉任何有用的文件。
+# 修复了 grep 命令错误和 /tmp 目录过度清理问题
 # -----------------------------------------------------------------------------
 
 # 颜色定义
@@ -36,7 +37,7 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
-log_info "正在启动智能系统清理程序..."
+log_info "正在启动智能系统清理程序 v2.0..."
 
 # 获取清理前的磁盘使用情况
 # 确保 awk 命令中的单引号被正确处理,使用双引号包裹整个命令字符串
@@ -115,18 +116,30 @@ else
 fi
 
 # -----------------------------------------------------------------------------
-# 4. 安全清理临时文件
+# 4. 安全清理临时文件 (改进版)
 # -----------------------------------------------------------------------------
 log_info "正在安全清理旧的临时文件 (超过 7 天)..."
-# /tmp 和 /var/tmp 通常在重启后会被清理,但运行时清理旧文件更安全
-# 删除 /tmp 下超过 7 天的文件和空目录,不删除正在使用的文件
-find /tmp -type f -atime +7 -delete 2>/dev/null
-find /tmp -type d -empty -delete 2>/dev/null
-log_success "/tmp 目录下旧的临时文件清理完成。"
 
-find /var/tmp -type f -atime +7 -delete 2>/dev/null
-find /var/tmp -type d -empty -delete 2>/dev/null
-log_success "/var/tmp 目录下旧的临时文件清理完成。"
+# 清理 /tmp - 更安全的方式
+# 只删除文件,不删除目录结构,避免破坏系统依赖
+if [ -d "/tmp" ]; then
+    # 只删除 /tmp 根目录下的旧文件,不递归进入子目录
+    find /tmp -maxdepth 1 -type f -atime +7 -delete 2>/dev/null
+    # 只删除深层嵌套的空目录,保护 /tmp 的直接子目录
+    find /tmp -mindepth 2 -type d -empty -delete 2>/dev/null
+    log_success "/tmp 目录下旧的临时文件清理完成。"
+else
+    log_warning "/tmp 目录不存在,跳过清理。"
+fi
+
+# 清理 /var/tmp - 同样采用安全方式
+if [ -d "/var/tmp" ]; then
+    find /var/tmp -maxdepth 1 -type f -atime +7 -delete 2>/dev/null
+    find /var/tmp -mindepth 2 -type d -empty -delete 2>/dev/null
+    log_success "/var/tmp 目录下旧的临时文件清理完成。"
+else
+    log_warning "/var/tmp 目录不存在,跳过清理。"
+fi
 
 # -----------------------------------------------------------------------------
 # 5. 清理用户缓存目录 (更温和的方式)
@@ -217,6 +230,41 @@ log_success "缩略图缓存清理完成。"
 log_info "正在清理旧的日志压缩文件..."
 find /var/log -name "*.gz" -type f -mtime +30 -delete 2>/dev/null
 log_success "旧的日志压缩文件清理完成。"
+
+# -----------------------------------------------------------------------------
+# 11. 验证系统关键目录 (新增)
+# -----------------------------------------------------------------------------
+log_info "正在验证系统关键目录..."
+
+# 检查并修复 /tmp 目录
+if [ ! -d "/tmp" ]; then
+    log_warning "/tmp 目录不存在,正在重建..."
+    mkdir -p /tmp
+    chmod 1777 /tmp
+    chown root:root /tmp
+    log_success "/tmp 目录已重建。"
+elif [ "$(stat -c %a /tmp)" != "1777" ]; then
+    log_warning "/tmp 目录权限不正确,正在修复..."
+    chmod 1777 /tmp
+    log_success "/tmp 目录权限已修复。"
+else
+    log_info "/tmp 目录状态正常。"
+fi
+
+# 检查并修复 /var/tmp 目录
+if [ ! -d "/var/tmp" ]; then
+    log_warning "/var/tmp 目录不存在,正在重建..."
+    mkdir -p /var/tmp
+    chmod 1777 /var/tmp
+    chown root:root /var/tmp
+    log_success "/var/tmp 目录已重建。"
+elif [ "$(stat -c %a /var/tmp)" != "1777" ]; then
+    log_warning "/var/tmp 目录权限不正确,正在修复..."
+    chmod 1777 /var/tmp
+    log_success "/var/tmp 目录权限已修复。"
+else
+    log_info "/var/tmp 目录状态正常。"
+fi
 
 # -----------------------------------------------------------------------------
 # 获取清理后的磁盘使用情况并显示结果
