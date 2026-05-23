@@ -70,7 +70,7 @@ echo "deb [signed-by=$keyring_path] http://deb.xanmod.org releases main" | tee /
 
 # 安装内核
 apt-get update
-apt-get install -y linux-xanmod-x64v3
+apt-get install -y linux-xanmod-lts-x64v3
 
 # 应用网络优化配置
 {
