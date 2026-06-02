@@ -59,17 +59,3 @@ then
     echo "正在清理Docker镜像、容器和卷..."
     docker system prune -a -f --volumes > /dev/null 2>&1
 fi
-
-# 清理包管理器缓存
-echo "正在清理包管理器缓存..."
-apt-get autoclean > /dev/null 2>&1
-apt-get autoremove -y > /dev/null 2>&1
-apt-get clean > /dev/null 2>&1
-
-# 清空系统日志
-echo "清空系统日志..."
-journalctl --vacuum-time=7d --vacuum-size=1G > /dev/null 2>&1
-
-end_space=$(df / | tail -n 1 | awk '{print $3}')
-cleared_space=$((start_space - end_space))
-echo "系统清理完成，清理了 $((cleared_space / 1024))M 空间！"
