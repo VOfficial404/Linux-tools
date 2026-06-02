@@ -8,15 +8,16 @@ fi
 
 start_space=$(df / | tail -n 1 | awk '{print $3}')
 
-# 正在更新依赖
 echo "正在更新依赖..."
 apt-get update > /dev/null 2>&1
-apt-get install -y deborphan > /dev/null 2>&1
+
+# 移除 deborphan 安装，因为 Debian 13 已不再支持
+# apt-get install -y deborphan > /dev/null 2>&1
 
 # 安全删除旧内核
 echo "正在删除未使用的内核..."
 current_kernel=$(uname -r)
-kernel_packages=$(dpkg --list | grep -E '^ii  linux-(image|headers)-[0-9]+' | awk '{ print $2 }' | grep -v "$current_kernel")
+kernel_packages=$(dpkg --list | grep -E '^ii  linux-(image|headers)-[0-9]+\' | awk '{ print $2 }' | grep -v "$current_kernel")
 if [ ! -z "$kernel_packages" ]; then
     echo "找到旧内核，正在删除：$kernel_packages"
     apt-get purge -y $kernel_packages > /dev/null 2>&1
@@ -25,10 +26,9 @@ else
     echo "没有旧内核需要删除。"
 fi
 
-# 清理孤立的包
-echo "正在清理孤立的包..."
-deborphan | xargs -r apt-get -y remove --purge > /dev/null 2>&1
-deborphan --guess-data | xargs apt-get -y remove --purge > /dev/null 2>&1
+# 清理孤立的包 (使用 apt autoremove 替代 deborphan)
+echo "正在清理不再需要的依赖包..."
+apt-get autoremove --purge -y > /dev/null 2>&1
 
 # 清理系统日志文件
 echo "正在清理系统日志文件..."
@@ -59,3 +59,17 @@ then
     echo "正在清理Docker镜像、容器和卷..."
     docker system prune -a -f --volumes > /dev/null 2>&1
 fi
+
+# 清理包管理器缓存
+echo "正在清理包管理器缓存..."
+apt-get autoclean > /dev/null 2>&1
+apt-get autoremove -y > /dev/null 2>&1
+apt-get clean > /dev/null 2>&1
+
+# 清空系统日志 (journalctl)
+echo "清空系统日志..."
+journalctl --vacuum-time=7d --vacuum-size=1G > /dev/null 2>&1
+
+end_space=$(df / | tail -n 1 | awk '{print $3}')
+cleared_space=$((start_space - end_space))
+echo "系统清理完成，清理了 $((cleared_space / 1024))M 空间！"
