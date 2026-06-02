@@ -17,7 +17,7 @@ apt-get update > /dev/null 2>&1
 # 安全删除旧内核
 echo "正在删除未使用的内核..."
 current_kernel=$(uname -r)
-kernel_packages=$(dpkg --list | grep -E '^ii  linux-(image|headers)-[0-9]+\' | awk '{ print $2 }' | grep -v "$current_kernel")
+kernel_packages=$(dpkg --list | grep -E '^ii  linux-(image|headers)-[0-9]+' | awk '{ print $2 }' | grep -v "$current_kernel")
 if [ ! -z "$kernel_packages" ]; then
     echo "找到旧内核，正在删除：$kernel_packages"
     apt-get purge -y $kernel_packages > /dev/null 2>&1
