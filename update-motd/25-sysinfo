@@ -1,4 +1,23 @@
 #!/bin/sh
+#
+# /etc/update-motd.d/25-sysinfo
+#
+# 登录面板：系统概况 + 负载/内存/磁盘占用条 + 连接构成 + 流量 + 最近登录
+#
+# 安装：
+#   install -m 0755 25-sysinfo /etc/update-motd.d/25-sysinfo
+#   run-parts /etc/update-motd.d
+#
+# 设计约定（改样式时请一并遵守，否则很容易"看着怪"）：
+#   * 标签一律 2 个汉字 = 显示宽度 4 列，所有行从同一列开始。
+#   * 只用单宽度字符：条用 █ ░，箭头用 ↓ ↑。不用 emoji，不用 ─ │ ┌ 这类
+#     "宽度歧义"字符——部分终端按 2 列渲染它们，会把整行挤到折行。
+#   * 条只表达「占用率」（0–100% 有意义）：负载 / 内存 / 磁盘 / 交换。
+#     连接数、构成比例没有"满格=危险"的含义，用对齐的彩色文字表达，
+#     免得把"18/142 是活跃连接"误读成"健康度只有 13%"。
+#   * 百分比右对齐到固定列，数值才能竖向扫读。
+#   * 颜色码由 printf '\033' 运行时生成，本文件不含任何控制字节。
+#   * 数据全部取自 /proc 与 /sys，不依赖 ss/netstat/ifconfig。
 
 USE_COLOR=1      # 1 = 彩色，0 = 纯文本
 USE_BOLD=1       # 1 = 标签加粗
@@ -162,29 +181,80 @@ host=$(uname -n)
 up=$(uptime -p 2>/dev/null | sed 's/^up //')
 up=$(printf '%s' "$up" | awk -F', ' '{ if (NF > 2) printf "%s, %s", $1, $2; else printf "%s", $0 }')
 
+# 容器（LXC/OpenVZ/部分 Docker）里 /proc/meminfo、/proc/cpuinfo、/proc/loadavg 报的都是
+# 宿主机的数字，真实配额在 cgroup 里。cgroup v2 看 /sys/fs/cgroup/memory.max，
+# v1 看 /sys/fs/cgroup/memory/ 目录下那几个文件。
+cgver=''; cg_mem_limit=''; cg_mem_used=''; cg_swap_limit=''; cg_swap_used=''
+cg_quota=''; cg_period=''
+if [ -r /sys/fs/cgroup/memory.max ]; then
+	cgver=2
+	cg_mem_limit=$(cat /sys/fs/cgroup/memory.max 2>/dev/null)
+	cg_mem_used=$(cat /sys/fs/cgroup/memory.current 2>/dev/null)
+	cg_swap_limit=$(cat /sys/fs/cgroup/memory.swap.max 2>/dev/null)
+	cg_swap_used=$(cat /sys/fs/cgroup/memory.swap.current 2>/dev/null)
+	cg_quota=$(awk '{print $1}' /sys/fs/cgroup/cpu.max 2>/dev/null)
+	cg_period=$(awk '{print $2}' /sys/fs/cgroup/cpu.max 2>/dev/null)
+elif [ -r /sys/fs/cgroup/memory/memory.limit_in_bytes ]; then
+	cgver=1
+	cg_mem_limit=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null)
+	cg_mem_used=$(cat /sys/fs/cgroup/memory/memory.usage_in_bytes 2>/dev/null)
+	cg_swap_limit=$(cat /sys/fs/cgroup/memory/memory.memsw.limit_in_bytes 2>/dev/null)
+	cg_swap_used=$(cat /sys/fs/cgroup/memory/memory.memsw.usage_in_bytes 2>/dev/null)
+	cg_quota=$(cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us 2>/dev/null)
+	cg_period=$(cat /sys/fs/cgroup/cpu/cpu.cfs_period_us 2>/dev/null)
+fi
+# v1 的 memsw 是「内存+交换」合计上限，减去内存上限才是交换上限
+if [ "$cgver" = 1 ]; then
+	case "$cg_swap_limit$cg_mem_limit" in
+		*[!0-9]*) ;;
+		*) [ "$cg_swap_limit" -gt "$cg_mem_limit" ] && cg_swap_limit=$(( cg_swap_limit - cg_mem_limit )) ;;
+	esac
+fi
+
 cores=$(nproc 2>/dev/null)
 [ -n "$cores" ] || cores=$(getconf _NPROCESSORS_ONLN 2>/dev/null)
 [ -n "$cores" ] || cores=$(grep -c '^processor' /proc/cpuinfo 2>/dev/null)
 [ -n "$cores" ] || cores=1
+# cgroup 的 CPU 配额（"200000 100000" = 2 核）可能小于 nproc，取较小值
+case "$cg_quota" in
+	''|max|*[!0-9]*) ;;
+	*) if [ "$cg_quota" -gt 0 ] && [ "${cg_period:-0}" -gt 0 ]; then
+		qc=$(( (cg_quota + cg_period - 1) / cg_period ))
+		[ "$qc" -gt 0 ] && [ "$qc" -lt "$cores" ] && cores=$qc
+	fi ;;
+esac
 
 loads=$(awk '{printf "%s %s %s", $1, $2, $3}' /proc/loadavg 2>/dev/null)
 l1=$(awk '{print $1}' /proc/loadavg 2>/dev/null)
 # 负载条 = load1 / 核数：100% 表示每核一个可运行任务
 lp=$(awk -v l="${l1:-0}" -v c="$cores" 'BEGIN{ p = (c > 0) ? l * 100 / c : 0; if (p > 999) p = 999; printf "%d", p }')
 
-mem=$(awk '
-	function h(k) {
-		if (k >= 1048576) return sprintf("%.1fG", k / 1048576)
-		if (k >= 1024)    return sprintf("%dM", k / 1024)
-		return sprintf("%dK", k)
+# 内存：cgroup 限额有效就用它（容器），否则退回 /proc/meminfo（物理机）
+mem=$(awk -v lim="$cg_mem_limit" -v used="$cg_mem_used" '
+	function h(b) {
+		if (b <= 0)          return "0"
+		if (b >= 1073741824) return sprintf("%.1fG", b / 1073741824)
+		if (b >= 1048576)    return sprintf("%dM", b / 1048576)
+		return sprintf("%dK", b / 1024)
 	}
+	function n(x) { return (x ~ /^[0-9]+$/) ? x + 0 : -1 }
 	/^MemTotal:/     { t = $2 }
 	/^MemAvailable:/ { a = $2 }
 	/^MemFree:/      { f = $2 }
 	END {
 		if (!t) exit
 		if (!a) a = f
-		printf "%d %s %s", (t - a) * 100 / t, h((t - a) * 1024), h(t * 1024)
+		host = t * 1024
+		L = n(lim)
+		if (L > 0 && L < host) {          # 有效限额；v1 的"无限制"是个远大于宿主的数
+			U = n(used)
+			if (U < 0 || U > L) U = L - (t - a) * 1024
+			if (U < 0) U = 0
+			printf "%d %s %s", U * 100 / L, h(U), h(L)
+		} else {
+			U = (t - a) * 1024
+			printf "%d %s %s", U * 100 / host, h(U), h(host)
+		}
 	}' /proc/meminfo)
 mp=''; mu=''; mt=''
 if [ -n "$mem" ]; then
@@ -193,8 +263,38 @@ $mem
 EOF
 fi
 
-swap=$(awk '/^SwapTotal:/{t=$2} /^SwapFree:/{f=$2} END{if (t > 0) printf "%d", (t - f) * 100 / t}' /proc/meminfo)
-swtext=$(awk '/^SwapTotal:/{t=$2} /^SwapFree:/{f=$2} END{if (t > 0) printf "%dM / %dM", (t - f) / 1024, t / 1024}' /proc/meminfo)
+# 交换：同样以 cgroup 为准；v2 的 swap.max=0 或 v1 的 memsw==memory 都表示没有交换
+swapinfo=$(awk -v lim="$cg_swap_limit" -v used="$cg_swap_used" '
+	function h(b) {
+		if (b <= 0)          return "0"
+		if (b >= 1073741824) return sprintf("%.1fG", b / 1073741824)
+		if (b >= 1048576)    return sprintf("%dM", b / 1048576)
+		return sprintf("%dK", b / 1024)
+	}
+	function n(x) { return (x ~ /^[0-9]+$/) ? x + 0 : -1 }
+	/^SwapTotal:/ { t = $2 }
+	/^SwapFree:/  { f = $2 }
+	END {
+		host = t * 1024
+		L = n(lim)
+		if (L == 0) exit
+		if (L > 0 && L < host) {
+			tot = L
+			U = n(used)
+			if (U < 0 || U > L) U = 0
+		} else {
+			tot = host
+			U = (t - f) * 1024
+		}
+		if (tot <= 0) exit
+		printf "%d %s %s", U * 100 / tot, h(U), h(tot)
+	}' /proc/meminfo)
+sp=''; su=''; st=''
+if [ -n "$swapinfo" ]; then
+	read -r sp su st <<EOF
+$swapinfo
+EOF
+fi
 
 # 真实挂载点，每个一行：mount 百分比 已用 总量
 disks=$(df -h --output=target,pcent,used,size -x tmpfs -x devtmpfs -x vfat -x squashfs 2>/dev/null \
@@ -333,7 +433,7 @@ row "主机" "$host${up:+ · $up}${users:+ · 在线 $users 人}${procs:+ · 进
 printf '\n'
 [ -n "$lp" ] && rowbar "负载" "$lp" "${loads:-n/a} · ${cores} 核"
 [ -n "$mem" ] && rowbar "内存" "$mp" "$mu / $mt"
-[ -n "$swap" ] && rowbar "交换" "$swap" "$swtext"
+[ -n "$sp" ] && rowbar "交换" "$sp" "$su / $st"
 if [ -n "$disks" ]; then
 	_first=1
 	while read -r _mnt _pct _used _size; do
