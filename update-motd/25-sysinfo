@@ -149,6 +149,10 @@ sbar() {
 # 带占用条的一行：rowbar <标签> <百分比> <事实>
 rowbar() { printf ' %s%s%s  %s  %s%3s%%%s  %s\n' "$C" "$1" "$Z" "$(bar "$2")" "$D" "$2" "$Z" "$3"; }
 
+# 磁盘行：把挂载点放到最后一列（仿 df -h 的列序），避免"挂载点 / 已用 / 总量"三个斜杠连在一起
+# "已用 / 总量"是纯 ASCII，可以用 %-14s 按字节补齐对齐
+diskrow() { printf ' %s%s%s  %s  %s%3s%%%s  %-14s %s\n' "$C" "$1" "$Z" "$(bar "$2")" "$D" "$2" "$Z" "$3" "$4"; }
+
 # 带构成条的一行：srow <标签> <值1> <值2> [值3] <事实>
 srow() {
 	read -r _bar _pct <<EOF
@@ -439,7 +443,7 @@ if [ -n "$disks" ]; then
 	while read -r _mnt _pct _used _size; do
 		[ -n "$_mnt" ] || continue
 		if [ "$_first" = 1 ]; then _lbl='磁盘'; _first=0; else _lbl='    '; fi
-		rowbar "$_lbl" "$_pct" "$_mnt $_used / $_size"
+		diskrow "$_lbl" "$_pct" "$_used / $_size" "$_mnt"
 	done <<EOF
 $disks
 EOF
