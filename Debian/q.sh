@@ -13,14 +13,14 @@ REPO_ENTRY="deb [signed-by=$GPG_KEY_PATH] https://repo.natesales.net/apt * *"
 
 # 检查依赖项
 check_deps() {
-  local deps=("curl" "gpg")
-  for dep in "${deps[@]}"; do
-    if ! command -v "$dep" &> /dev/null; then
-      echo "正在安装依赖项: $dep..."
-      apt-get update -qq
-      apt-get install -y -qq "$dep"
-    fi
-  done
+  local missing=()
+  command -v curl &> /dev/null || missing+=(curl)
+  command -v gpg  &> /dev/null || missing+=(gpg)
+  if (( ${#missing[@]} )); then
+    echo "正在安装依赖项: ${missing[*]}..."
+    apt-get update -qq
+    apt-get install -y -qq "${missing[@]}"
+  fi
 }
 
 # 检查 root 权限
@@ -43,26 +43,25 @@ create_keyring_dir() {
 # 导入 GPG 密钥
 import_gpg_key() {
   echo "下载并验证 GPG 密钥..."
-  local temp_key
+  # 全局变量 + EXIT trap：任何一步失败退出时都能删掉临时文件
   temp_key=$(mktemp)
-  
+  trap 'rm -f "$temp_key"' EXIT
+
   # 下载密钥并验证状态码
   if ! curl -fsSL "$GPG_KEY_URL" -o "$temp_key"; then
     echo "错误：无法下载 GPG 密钥" >&2
     exit 1
   fi
 
-  # 验证密钥格式
-  if ! gpg --dry-run --import --quiet "$temp_key"; then
+  # 验证密钥格式（--show-keys 只解析，不写入 root 的密钥环）
+  if ! gpg --show-keys "$temp_key" &> /dev/null; then
     echo "错误：无效的 GPG 密钥格式" >&2
-    rm -f "$temp_key"
     exit 1
   fi
 
   # 转换并安装密钥
   gpg --dearmor --yes -o "$GPG_KEY_PATH" "$temp_key"
   chmod 644 "$GPG_KEY_PATH"
-  rm -f "$temp_key"
 }
 
 # 添加软件源

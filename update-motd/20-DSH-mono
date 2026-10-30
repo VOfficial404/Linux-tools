@@ -1,9 +1,8 @@
 #!/bin/sh
-# /etc/update-motd.d/20-logo-mono
+# /etc/update-motd.d/20-DSH-mono
 # Prints the ASCII logo.  Install:
-#   install -m 0755 20-logo-mono /etc/update-motd.d/20-logo-mono
+#   install -m 0755 20-DSH-mono /etc/update-motd.d/20-DSH-mono
 #   run-parts /etc/update-motd.d          # preview
-# Edit CAPTION below to change the tag line.
 # colour-free grey-block art, 40x20 (works anywhere)
 cat <<'DSH_LOGO'
            ░░░░░░

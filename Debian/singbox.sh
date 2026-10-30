@@ -27,6 +27,18 @@ check_root() {
   [[ "$(id -u)" -eq 0 ]] || error_exit "本脚本需要 root 权限执行"
 }
 
+# 检查依赖项（最小化安装的系统里常常没有 curl / gpg）
+check_deps() {
+  local missing=()
+  command -v curl &>/dev/null || missing+=(curl)
+  command -v gpg  &>/dev/null || missing+=(gpg)
+  if (( ${#missing[@]} )); then
+    echo -e "${GREEN}安装依赖项: ${missing[*]}...${NC}"
+    apt-get update -qq || error_exit "软件源更新失败"
+    apt-get install -y -qq "${missing[@]}" || error_exit "依赖项安装失败"
+  fi
+}
+
 # 创建密钥目录
 create_keyring_dir() {
   if [[ ! -d "$KEYRINGS_DIR" ]]; then
@@ -48,7 +60,7 @@ import_gpg_key() {
   fi
 
   echo -e "${GREEN}验证密钥格式...${NC}"
-  if ! gpg --dry-run --import --quiet "$temp_key"; then
+  if ! gpg --show-keys "$temp_key" &>/dev/null; then
     rm -f "$temp_key"
     error_exit "无效的 GPG 密钥格式"
   fi
@@ -88,6 +100,7 @@ install_package() {
 # 主流程
 main() {
   check_root
+  check_deps
   create_keyring_dir
   import_gpg_key
   add_repository

@@ -1,9 +1,8 @@
 #!/bin/sh
-# /etc/update-motd.d/20-logo
+# /etc/update-motd.d/20-DSH
 # Prints the ASCII logo.  Install:
-#   install -m 0755 20-logo /etc/update-motd.d/20-logo
+#   install -m 0755 20-DSH /etc/update-motd.d/20-DSH
 #   run-parts /etc/update-motd.d          # preview
-# Edit CAPTION below to change the tag line.
 # 256-colour half-block art, 40x20
 cat <<'DSH_LOGO'
            [38;5;24m▄[38;5;24m▄[38;5;25m▄[38;5;61m▄[38;5;24m▄[38;5;24m▄[0m                       

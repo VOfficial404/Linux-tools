@@ -471,6 +471,9 @@ printf '\n %s%s%s\n' "$C" "最近 $LOGINS 次 SSH 登录" "$Z"
 if [ -n "$logins" ]; then
 	[ "$LOGIN_HEADER" = 1 ] && printf '   %s%s%s\n' "$D" "$LOGIN_HDR" "$Z"
 	printf '%s\n' "$logins"
+elif ! command -v last >/dev/null 2>&1; then
+	# Debian 13 的 util-linux 不再提供 last，需安装 wtmpdb（它提供兼容的 last 命令）
+	printf '   %s没有 last 命令（Debian 13 请安装 wtmpdb 与 libpam-wtmpdb）%s\n' "$D" "$Z"
 else
-	printf '   %s读不到登录记录（/var/log/wtmp 为空或不可读）%s\n' "$D" "$Z"
+	printf '   %s读不到登录记录（登录数据库为空或不可读）%s\n' "$D" "$Z"
 fi

@@ -24,6 +24,19 @@ log_error() {
   echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# apt 全程非交互；配置文件冲突时保留本地版本
+export DEBIAN_FRONTEND=noninteractive
+APT_OPTS=(-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
+
+# 从终端读取单个字符，兼容 curl ... | bash 的用法；无终端时返回空
+ask() {
+  REPLY=''
+  if [ -r /dev/tty ]; then
+    read -r -p "$1" -n 1 REPLY </dev/tty || true
+    echo
+  fi
+}
+
 # 检查是否以root用户运行
 if [ "$(id -u)" -ne 0 ]; then
   log_error "请使用root权限运行此脚本"
@@ -46,14 +59,16 @@ fi
 
 log_info "检测到系统: $PRETTY_NAME"
 
-# 获取发行版代号
-if ! command -v lsb_release &> /dev/null; then
-  log_warn "lsb_release 未安装，正在安装..."
-  apt-get update -qq
-  apt-get install -y lsb-release
+# 获取发行版代号：优先用 os-release，没有时再退回 lsb_release
+DEBIAN_CODENAME="${VERSION_CODENAME:-}"
+if [ -z "$DEBIAN_CODENAME" ]; then
+  if ! command -v lsb_release &> /dev/null; then
+    log_warn "lsb_release 未安装，正在安装..."
+    apt-get update -qq
+    apt-get install -y lsb-release
+  fi
+  DEBIAN_CODENAME=$(lsb_release -sc)
 fi
-
-DEBIAN_CODENAME=$(lsb_release -sc)
 log_info "发行版代号: $DEBIAN_CODENAME"
 
 # 检查是否支持的版本
@@ -63,8 +78,7 @@ case "$DEBIAN_CODENAME" in
     ;;
   *)
     log_warn "警告: $DEBIAN_CODENAME 可能不被 XanMod 官方支持"
-    read -p "是否继续? (y/n) " -n 1 -r
-    echo
+    ask "是否继续? (y/n) "
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
       exit 1
     fi
@@ -90,17 +104,15 @@ create_swap() {
     echo '/swapfile none swap sw 0 0' | tee -a /etc/fstab
   fi
 
-  # 设置 swappiness (推荐值为 10-60，100 太高)
-  if ! grep -q 'vm.swappiness' /etc/sysctl.conf; then
-    echo "vm.swappiness = 60" >> /etc/sysctl.conf
-  fi
+  # swappiness 统一由后面的 /etc/sysctl.d/99-xanmod-optimizations.conf 设置
+  # （Debian 13 已不再读取 /etc/sysctl.conf）
 
   swapon --show
   log_info "✓ SWAP 创建成功"
 }
 
-# 检查现有交换空间
-if ! swapon --show | grep -q 'swap'; then
+# 检查现有交换空间：有任何一行输出就说明已有交换（分区、文件、zram 都算）
+if [ -z "$(swapon --noheadings --show 2>/dev/null)" ]; then
   create_swap
 else
   log_info "✓ 已存在 SWAP 空间"
@@ -121,7 +133,7 @@ apt-get install -y --no-install-recommends \
   ca-certificates
 
 log_info "升级系统软件包..."
-apt-get dist-upgrade -y
+apt-get "${APT_OPTS[@]}" dist-upgrade -y
 
 # 处理 XanMod GPG 密钥
 keyring_path="/etc/apt/keyrings/xanmod-archive-keyring.gpg"
@@ -136,7 +148,8 @@ trap cleanup EXIT
 mkdir -p /etc/apt/keyrings
 
 log_info "正在下载 XanMod 官方 GPG 密钥..."
-if ! wget -qO - https://dl.xanmod.org/archive.key | gpg --dearmor -o "$temp_key"; then
+# mktemp 已经创建了文件，必须加 --yes，否则 gpg 会停下来询问是否覆盖
+if ! wget -qO - https://dl.xanmod.org/archive.key | gpg --dearmor --yes -o "$temp_key"; then
   log_error "密钥下载或转换失败"
   exit 1
 fi
@@ -160,60 +173,83 @@ echo "deb [signed-by=$keyring_path] http://deb.xanmod.org $DEBIAN_CODENAME main"
 # 检测 CPU 微架构级别
 log_info "检测 CPU 微架构级别..."
 
+# 按 x86-64 psABI 的定义检查整组指令集，只看到 avx2 / avx512 字样并不够
+# （部分虚拟机会暴露 avx2 却缺 bmi2/fma，装 v3 内核后无法启动）
 detect_cpu_level() {
-  # 使用 /proc/cpuinfo 检测 CPU 特性
-  if grep -q "avx512" /proc/cpuinfo; then
-    echo "x64v4"
-  elif grep -q "avx2" /proc/cpuinfo; then
-    echo "x64v3"
-  elif grep -q "sse4_2" /proc/cpuinfo; then
-    echo "x64v2"
-  else
+  local flags
+  flags=" $(grep -m1 '^flags' /proc/cpuinfo | cut -d: -f2) "
+  has() {
+    local f
+    for f in "$@"; do [[ $flags == *" $f "* ]] || return 1; done
+  }
+  if ! has cx16 lahf_lm popcnt sse4_1 sse4_2 ssse3; then
     echo "x64v1"
+  elif ! has avx avx2 bmi1 bmi2 f16c fma abm movbe xsave; then
+    echo "x64v2"
+  elif ! has avx512f avx512bw avx512cd avx512dq avx512vl; then
+    echo "x64v3"
+  else
+    echo "x64v4"
   fi
 }
 
 CPU_LEVEL=$(detect_cpu_level)
 log_info "检测到 CPU 级别: $CPU_LEVEL"
 
-# 选择内核包
-if [ "$DEBIAN_CODENAME" = "bookworm" ]; then
-  KERNEL_PACKAGE="linux-xanmod-lts-$CPU_LEVEL"
-  log_info "Debian 12 (bookworm) 仅支持 LTS 内核"
-else
-  # 让用户选择内核分支
-  echo ""
-  echo "请选择内核分支:"
-  echo "1) LTS (长期支持，推荐用于生产环境)"
-  echo "2) MAIN (主线，最新特性)"
-  echo "3) RT (实时内核，用于低延迟场景)"
-  read -p "请输入选项 [1-3] (默认: 1): " kernel_choice
-
-  case "${kernel_choice:-1}" in
-    1)
-      KERNEL_PACKAGE="linux-xanmod-lts-$CPU_LEVEL"
-      ;;
-    2)
-      KERNEL_PACKAGE="linux-xanmod-$CPU_LEVEL"
-      ;;
-    3)
-      KERNEL_PACKAGE="linux-xanmod-rt-$CPU_LEVEL"
-      ;;
-    *)
-      log_warn "无效选择，使用默认 LTS 内核"
-      KERNEL_PACKAGE="linux-xanmod-lts-$CPU_LEVEL"
-      ;;
-  esac
+# 让用户选择内核分支
+echo ""
+echo "请选择内核分支:"
+echo "1) LTS (长期支持，推荐用于生产环境)"
+echo "2) MAIN (主线，最新特性)"
+echo "3) RT (实时内核，用于低延迟场景)"
+kernel_choice=''
+if [ -r /dev/tty ]; then
+  read -r -p "请输入选项 [1-3] (默认: 1): " kernel_choice </dev/tty || true
 fi
 
-log_info "将安装: $KERNEL_PACKAGE"
+case "${kernel_choice:-1}" in
+  1) BRANCH="lts" ;;
+  2) BRANCH="main" ;;
+  3) BRANCH="rt" ;;
+  *) log_warn "无效选择，使用默认 LTS 内核"; BRANCH="lts" ;;
+esac
 
-# 更新并安装内核
 log_info "更新软件包列表..."
 apt-get update
 
+# 并非每个分支都提供所有级别（例如 x64v4 已停止单独构建），
+# 依次尝试 本级别 -> 更低级别 -> LTS，选第一个软件源里真实存在的包
+pkg_name() {
+  if [ "$1" = "main" ]; then echo "linux-xanmod-$2"; else echo "linux-xanmod-$1-$2"; fi
+}
+levels=()
+for lv in x64v4 x64v3 x64v2 x64v1; do
+  [[ ${#levels[@]} -gt 0 || $lv == "$CPU_LEVEL" ]] && levels+=("$lv")
+done
+
+KERNEL_PACKAGE=''
+for br in "$BRANCH" lts; do
+  for lv in "${levels[@]}"; do
+    candidate=$(pkg_name "$br" "$lv")
+    if apt-cache show "$candidate" >/dev/null 2>&1; then
+      KERNEL_PACKAGE=$candidate
+      break 2
+    fi
+  done
+done
+
+if [ -z "$KERNEL_PACKAGE" ]; then
+  log_error "软件源里找不到适合 $CPU_LEVEL 的 XanMod 内核包"
+  log_error "请检查 $sources_list 以及 $DEBIAN_CODENAME 是否受 XanMod 支持"
+  exit 1
+fi
+[ "$KERNEL_PACKAGE" = "$(pkg_name "$BRANCH" "$CPU_LEVEL")" ] \
+  || log_warn "软件源中没有 $(pkg_name "$BRANCH" "$CPU_LEVEL")，改用 $KERNEL_PACKAGE"
+
+log_info "将安装: $KERNEL_PACKAGE"
+
 log_info "正在安装 XanMod 内核..."
-if apt-get install -y "$KERNEL_PACKAGE"; then
+if apt-get "${APT_OPTS[@]}" install -y "$KERNEL_PACKAGE"; then
   log_info "✓ XanMod 内核安装成功"
 else
   log_error "内核安装失败"
@@ -277,13 +313,16 @@ vm.swappiness = 60
 vm.vfs_cache_pressure = 50
 EOF
 
-# 应用配置
-sysctl -p "$sysctl_conf"
-log_info "✓ 网络优化配置已应用"
+# 应用配置。当前还在旧内核上，个别参数可能暂不支持，失败不应中断脚本，重启后会自动生效
+if sysctl -p "$sysctl_conf" >/dev/null; then
+  log_info "✓ 网络优化配置已应用"
+else
+  log_warn "部分参数在当前内核上未能应用，重启进入 XanMod 内核后会自动生效"
+fi
 
 # 显示已安装的内核
 log_info "当前已安装的内核:"
-dpkg -l | grep -E 'linux-image|linux-xanmod' | grep ^ii
+dpkg -l | grep -E 'linux-image|linux-xanmod' | grep ^ii || true
 
 # 显示当前内核
 log_info "当前运行的内核: $(uname -r)"
@@ -301,8 +340,7 @@ log_warn "重要: 需要重启系统以使用新内核"
 echo ""
 
 # 重启提示
-read -p "是否现在重启系统？(y/n) " -n 1 -r
-echo
+ask "是否现在重启系统？(y/n) "
 case "$REPLY" in
   y|Y)
     log_info "系统将在 5 秒后重启..."
