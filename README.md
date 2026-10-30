@@ -1,6 +1,6 @@
 # Linux-tools
 
-面向 Debian 12 (bookworm) / Debian 13 (trixie) 服务器的一组运维脚本，通过一个交互式菜单统一调用：系统清理、Swap、XanMod 内核、sing-box、Go、SSH 漏洞检查、SSH 禁止密码登录、登录面板等。
+面向 Debian 12 (bookworm) / Debian 13 (trixie) 服务器的一组运维脚本，通过一个交互式菜单统一调用：系统清理、Swap、XanMod 内核、sing-box、Go、SSH 漏洞检查、SSH 禁止密码登录、修改主机名、登录面板等。
 
 > [!WARNING]
 > **本仓库的脚本和文档由 AI（Claude 和 GPT）生成，非人工编写。**
@@ -52,10 +52,11 @@ git clone https://github.com/VOfficial404/Linux-tools.git && cd Linux-tools && s
 | 3 | XanMod 内核 + 网络优化 | `Debian/xanmod-kernel.sh` | 按 CPU 指令集级别安装 XanMod 内核，并开启 BBR 等网络参数。仅 x86_64 |
 | 4 | SSH 漏洞检查 | `ssh-check.sh` | 检查 sshd 是否受 regreSSHion（CVE-2024-6387）影响，只检查，不修改 |
 | 5 | SSH 禁止密码登录 | `Debian/ssh-keyonly.sh` | 只允许密钥登录，可添加公钥、一键恢复 |
-| 6 | sing-box | `Debian/singbox.sh` | 从官方 apt 源安装，配置 AnyTLS / AnyReality 节点并生成链接 |
-| 7 | q | `Debian/q.sh` | 添加官方 apt 源，安装 DNS 查询工具 [q](https://github.com/natesales/q) |
-| 8 | Go 语言 | `Debian/golong.sh` | 安装官方最新版或指定版本，带 sha256 校验 |
-| 9 | 登录面板（motd） | `update-motd/` | 安装 SSH 登录时显示的 logo 和系统信息面板 |
+| 6 | 修改主机名 | `Debian/hostname.sh` | 修改主机名，同步 `/etc/hosts`，防止 cloud-init 重启后改回 |
+| 7 | sing-box | `Debian/singbox.sh` | 从官方 apt 源安装，配置 AnyTLS / AnyReality 节点并生成链接 |
+| 8 | q | `Debian/q.sh` | 添加官方 apt 源，安装 DNS 查询工具 [q](https://github.com/natesales/q) |
+| 9 | Go 语言 | `Debian/golong.sh` | 安装官方最新版或指定版本，带 sha256 校验 |
+| 10 | 登录面板（motd） | `update-motd/` | 安装 SSH 登录时显示的 logo 和系统信息面板 |
 
 每个子脚本也可以不经过菜单单独运行，用法写在各自文件的开头。
 
@@ -142,7 +143,19 @@ sudo bash Debian/ssh-keyonly.sh --status   # 查看当前生效的登录设置
 sudo bash Debian/ssh-keyonly.sh --restore  # 恢复原来的登录方式
 ```
 
-### 6. sing-box（AnyTLS / AnyReality）
+### 6. 修改主机名
+
+```bash
+sudo bash Debian/hostname.sh           # 交互式输入
+sudo bash Debian/hostname.sh web01     # 直接修改
+```
+
+- 用 `hostnamectl set-hostname` 修改；没有 systemd 的环境改写 `/etc/hostname`。
+- 同步修改 `/etc/hosts` 里的 `127.0.1.1` 一行（先备份）。不改的话，每次用 `sudo` 都会提示 `unable to resolve host`。
+- 云服务器上的 cloud-init 默认会在重启时把主机名改回去。检测到时会询问是否写入 `preserve_hostname: true`。
+- 主机名只能包含字母、数字、`-` 和 `.`，大写会自动转成小写。
+
+### 7. sing-box（AnyTLS / AnyReality）
 
 - 从 sing-box 官方 apt 源安装稳定版（会校验签名密钥），AnyTLS 需要 1.12.0 以上。
 - 可配置三种模式：仅 AnyReality、仅 AnyTLS（自签证书）、两者都开。端口、密码、SNI 都可以自己填，回车用默认值，密码默认随机生成。
@@ -156,7 +169,7 @@ sudo bash Debian/singbox.sh --install   # 只安装 / 升级 sing-box 程序
 sudo bash Debian/singbox.sh --link      # 显示节点链接
 ```
 
-### 8. Go 语言
+### 9. Go 语言
 
 ```bash
 sudo bash Debian/golong.sh                    # 最新稳定版
@@ -165,7 +178,7 @@ sudo GO_VERSION=1.23.4 bash Debian/golong.sh  # 指定版本
 
 安装到 `/usr/local/go`，PATH 写入 `/etc/profile.d/go.sh`，重新登录后生效。
 
-### 9. 登录面板（motd）
+### 10. 登录面板（motd）
 
 装好后，每次 SSH 登录会显示：
 
@@ -191,6 +204,7 @@ apt install wtmpdb libpam-wtmpdb
 ├── Debian/
 │   ├── clear.sh
 │   ├── golong.sh
+│   ├── hostname.sh
 │   ├── q.sh
 │   ├── singbox.sh
 │   ├── ssh-keyonly.sh

@@ -34,6 +34,7 @@ Q_SH="Debian/q.sh"
 GOLANG="Debian/golong.sh"
 SWAP_SH="Debian/swap.sh"
 SSH_KEYONLY="Debian/ssh-keyonly.sh"
+HOSTNAME_SH="Debian/hostname.sh"
 SSH_CHECK="ssh-check.sh"
 MOTD_DIR="/etc/update-motd.d"
 MOTD_BACKUP="/etc/motd.bak-linux-tools"
@@ -309,12 +310,13 @@ show_menu() {
     item 3 "安装 XanMod 内核 + 网络优化" "$(status_kernel)"
     item 4 "SSH 漏洞检查（CVE-2024-6387）" "只检查，不修改"
     item 5 "SSH 禁止密码登录" "$(status_ssh_login)"
+    item 6 "修改主机名" "当前：$(hostname 2>/dev/null)"
     printf '\n %s软件安装%s\n' "$BOLD" "$NC"
-    item 6 "sing-box（AnyTLS / AnyReality 节点）" "$(status_singbox)"
-    item 7 "q（DNS 查询工具）" "$(status_q)"
-    item 8 "Go 语言" "$(status_go)"
+    item 7 "sing-box（AnyTLS / AnyReality 节点）" "$(status_singbox)"
+    item 8 "q（DNS 查询工具）" "$(status_q)"
+    item 9 "Go 语言" "$(status_go)"
     printf '\n %s登录界面%s\n' "$BOLD" "$NC"
-    item 9 "登录面板（motd）" "$(status_motd)"
+    item 10 "登录面板（motd）" "$(status_motd)"
     printf '\n'
     item 0 "退出" ""
     printf '\n'
@@ -524,10 +526,11 @@ main() {
             3) do_xanmod ;;
             4) do_ssh_check ;;
             5) do_ssh_keyonly ;;
-            6) do_singbox ;;
-            7) do_apt_install "q" "$Q_SH" "$(status_q)" ;;
-            8) do_go ;;
-            9) do_motd ;;
+            6) run_script "$HOSTNAME_SH"; pause ;;
+            7) do_singbox ;;
+            8) do_apt_install "q" "$Q_SH" "$(status_q)" ;;
+            9) do_go ;;
+            10) do_motd ;;
             0|q|Q) info "再见。"; exit 0 ;;
             '') ;;
             *) warn "无效编号：$choice"; sleep 1 ;;
