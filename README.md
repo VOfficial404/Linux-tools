@@ -1,6 +1,6 @@
 # Linux-tools
 
-面向 Debian 12 (bookworm) / Debian 13 (trixie) 服务器的一组运维脚本，通过一个交互式菜单统一调用：系统清理、Swap、XanMod 内核、sing-box、Go、SSH 漏洞检查、登录面板等。
+面向 Debian 12 (bookworm) / Debian 13 (trixie) 服务器的一组运维脚本，通过一个交互式菜单统一调用：系统清理、Swap、XanMod 内核、sing-box、Go、SSH 漏洞检查、SSH 禁止密码登录、登录面板等。
 
 > [!WARNING]
 > **本仓库的脚本和文档由 AI（Claude 和 GPT）生成，非人工编写。**
@@ -51,10 +51,11 @@ git clone https://github.com/VOfficial404/Linux-tools.git && cd Linux-tools && s
 | 2 | Swap 管理 | `Debian/swap.sh` | 添加、调整、删除 `/swapfile`，设置 swappiness |
 | 3 | XanMod 内核 + 网络优化 | `Debian/xanmod-kernel.sh` | 按 CPU 指令集级别安装 XanMod 内核，并开启 BBR 等网络参数。仅 x86_64 |
 | 4 | SSH 漏洞检查 | `ssh-check.sh` | 检查 sshd 是否受 regreSSHion（CVE-2024-6387）影响，只检查，不修改 |
-| 5 | sing-box | `Debian/singbox.sh` | 添加 sing-box 官方 apt 源并安装或升级 |
-| 6 | q | `Debian/q.sh` | 添加官方 apt 源，安装 DNS 查询工具 [q](https://github.com/natesales/q) |
-| 7 | Go 语言 | `Debian/golong.sh` | 安装官方最新版或指定版本，带 sha256 校验 |
-| 8 | 登录面板（motd） | `update-motd/` | 安装 SSH 登录时显示的 logo 和系统信息面板 |
+| 5 | SSH 禁止密码登录 | `Debian/ssh-keyonly.sh` | 只允许密钥登录，可添加公钥、一键恢复 |
+| 6 | sing-box | `Debian/singbox.sh` | 添加 sing-box 官方 apt 源并安装或升级 |
+| 7 | q | `Debian/q.sh` | 添加官方 apt 源，安装 DNS 查询工具 [q](https://github.com/natesales/q) |
+| 8 | Go 语言 | `Debian/golong.sh` | 安装官方最新版或指定版本，带 sha256 校验 |
+| 9 | 登录面板（motd） | `update-motd/` | 安装 SSH 登录时显示的 logo 和系统信息面板 |
 
 每个子脚本也可以不经过菜单单独运行，用法写在各自文件的开头。
 
@@ -111,7 +112,37 @@ bash <(wget -qO- https://raw.githubusercontent.com/VOfficial404/Linux-tools/main
 - 网络参数写在 `/etc/sysctl.d/99-xanmod-optimizations.conf`，不需要时删掉这个文件即可。
 - 装完需要重启才会使用新内核。
 
-### 7. Go 语言
+### 5. SSH 禁止密码登录
+
+- 不改 `/etc/ssh/sshd_config` 本身，只写一个单独的文件 `/etc/ssh/sshd_config.d/00-linux-tools-keyonly.conf`：
+
+  ```
+  PubkeyAuthentication yes
+  PasswordAuthentication no
+  KbdInteractiveAuthentication no
+  PermitEmptyPasswords no
+  PermitRootLogin prohibit-password   # 可选：只允许密钥 / 完全禁止 / 不修改
+  ```
+
+  文件名用 `00` 开头，是因为 sshd 只认同一选项第一次出现的值，这样能排在云服务器上 cloud-init 写的 `50-cloud-init.conf`（里面常有 `PasswordAuthentication yes`）前面。
+- **不会**设置 `UsePAM no`：Debian 上关掉 PAM，登录面板（motd）、资源限制、systemd 登录会话都会失效。关掉 `KbdInteractiveAuthentication` 就足以让 PAM 不再询问密码。网上教程里的 `ChallengeResponseAuthentication` 是它的旧名字。
+- 应用前会列出每个用户有几把公钥。没有任何公钥时拒绝执行；当前使用的用户没有公钥时会警告并再确认一次。
+- 写入后先用 `sshd -t` 检查语法、用 `sshd -T` 确认真的生效，不对就自动撤销；最后用 `systemctl reload ssh`，已连着的会话不会断开。
+- 菜单里可以直接粘贴公钥添加到某个用户的 `authorized_keys`，权限会自动设好。
+
+**应用后请先不要关闭当前的 SSH 窗口**，另开一个终端确认密钥能登录。万一登不上，在原窗口或服务商的 VNC / 控制台执行：
+
+```bash
+rm -f /etc/ssh/sshd_config.d/00-linux-tools-keyonly.conf && systemctl reload ssh
+```
+
+```bash
+sudo bash Debian/ssh-keyonly.sh            # 交互式菜单
+sudo bash Debian/ssh-keyonly.sh --status   # 查看当前生效的登录设置
+sudo bash Debian/ssh-keyonly.sh --restore  # 恢复原来的登录方式
+```
+
+### 8. Go 语言
 
 ```bash
 sudo bash Debian/golong.sh                    # 最新稳定版
@@ -120,7 +151,7 @@ sudo GO_VERSION=1.23.4 bash Debian/golong.sh  # 指定版本
 
 安装到 `/usr/local/go`，PATH 写入 `/etc/profile.d/go.sh`，重新登录后生效。
 
-### 8. 登录面板（motd）
+### 9. 登录面板（motd）
 
 装好后，每次 SSH 登录会显示：
 
@@ -148,6 +179,7 @@ apt install wtmpdb libpam-wtmpdb
 │   ├── golong.sh
 │   ├── q.sh
 │   ├── singbox.sh
+│   ├── ssh-keyonly.sh
 │   ├── swap.sh
 │   └── xanmod-kernel.sh
 └── update-motd/

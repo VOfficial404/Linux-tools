@@ -33,6 +33,7 @@ SINGBOX="Debian/singbox.sh"
 Q_SH="Debian/q.sh"
 GOLANG="Debian/golong.sh"
 SWAP_SH="Debian/swap.sh"
+SSH_KEYONLY="Debian/ssh-keyonly.sh"
 SSH_CHECK="ssh-check.sh"
 MOTD_DIR="/etc/update-motd.d"
 MOTD_BACKUP="/etc/motd.bak-linux-tools"
@@ -237,6 +238,18 @@ status_swap() {
     fi
 }
 
+status_ssh_login() {
+    local sshd pw
+    sshd=$(command -v sshd 2>/dev/null || echo /usr/sbin/sshd)
+    [[ -x $sshd ]] || { printf '未安装 sshd'; return; }
+    pw=$("$sshd" -T 2>/dev/null | awk '$1 == "passwordauthentication" { print $2; exit }')
+    case $pw in
+        no)  printf '%s已禁止密码登录%s' "$GREEN" "$NC" ;;
+        yes) printf '%s允许密码登录%s' "$YELLOW" "$NC" ;;
+        *)   printf '未知' ;;
+    esac
+}
+
 status_go() {
     if [[ -x /usr/local/go/bin/go ]]; then
         printf '%s已安装 %s%s' "$GREEN" "$(/usr/local/go/bin/go version 2>/dev/null | awk '{ print $3 }')" "$NC"
@@ -289,12 +302,13 @@ show_menu() {
     item 2 "Swap 管理" "$(status_swap)"
     item 3 "安装 XanMod 内核 + 网络优化" "$(status_kernel)"
     item 4 "SSH 漏洞检查（CVE-2024-6387）" "只检查，不修改"
+    item 5 "SSH 禁止密码登录" "$(status_ssh_login)"
     printf '\n %s软件安装%s\n' "$BOLD" "$NC"
-    item 5 "sing-box" "$(status_singbox)"
-    item 6 "q（DNS 查询工具）" "$(status_q)"
-    item 7 "Go 语言" "$(status_go)"
+    item 6 "sing-box" "$(status_singbox)"
+    item 7 "q（DNS 查询工具）" "$(status_q)"
+    item 8 "Go 语言" "$(status_go)"
     printf '\n %s登录界面%s\n' "$BOLD" "$NC"
-    item 8 "登录面板（motd）" "$(status_motd)"
+    item 9 "登录面板（motd）" "$(status_motd)"
     printf '\n'
     item 0 "退出" ""
     printf '\n'
@@ -319,6 +333,11 @@ do_clear() {
 # swap.sh 自带菜单，退出它就回到这里；只有出错时才停下来让你看输出
 do_swap() {
     run_script "$SWAP_SH" || pause
+}
+
+# ssh-keyonly.sh 也自带菜单，出错时才停下来
+do_ssh_keyonly() {
+    run_script "$SSH_KEYONLY" || pause
 }
 
 do_xanmod() {
@@ -493,10 +512,11 @@ main() {
             2) do_swap ;;
             3) do_xanmod ;;
             4) do_ssh_check ;;
-            5) do_apt_install "sing-box" "$SINGBOX" "$(status_singbox)" ;;
-            6) do_apt_install "q" "$Q_SH" "$(status_q)" ;;
-            7) do_go ;;
-            8) do_motd ;;
+            5) do_ssh_keyonly ;;
+            6) do_apt_install "sing-box" "$SINGBOX" "$(status_singbox)" ;;
+            7) do_apt_install "q" "$Q_SH" "$(status_q)" ;;
+            8) do_go ;;
+            9) do_motd ;;
             0|q|Q) info "再见。"; exit 0 ;;
             '') ;;
             *) warn "无效编号：$choice"; sleep 1 ;;
