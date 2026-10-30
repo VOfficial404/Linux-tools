@@ -52,7 +52,7 @@ git clone https://github.com/VOfficial404/Linux-tools.git && cd Linux-tools && s
 | 3 | XanMod 内核 + 网络优化 | `Debian/xanmod-kernel.sh` | 按 CPU 指令集级别安装 XanMod 内核，并开启 BBR 等网络参数。仅 x86_64 |
 | 4 | SSH 漏洞检查 | `ssh-check.sh` | 检查 sshd 是否受 regreSSHion（CVE-2024-6387）影响，只检查，不修改 |
 | 5 | SSH 禁止密码登录 | `Debian/ssh-keyonly.sh` | 只允许密钥登录，可添加公钥、一键恢复 |
-| 6 | sing-box | `Debian/singbox.sh` | 添加 sing-box 官方 apt 源并安装或升级 |
+| 6 | sing-box | `Debian/singbox.sh` | 从官方 apt 源安装，配置 AnyTLS / AnyReality 节点并生成链接 |
 | 7 | q | `Debian/q.sh` | 添加官方 apt 源，安装 DNS 查询工具 [q](https://github.com/natesales/q) |
 | 8 | Go 语言 | `Debian/golong.sh` | 安装官方最新版或指定版本，带 sha256 校验 |
 | 9 | 登录面板（motd） | `update-motd/` | 安装 SSH 登录时显示的 logo 和系统信息面板 |
@@ -140,6 +140,20 @@ rm -f /etc/ssh/sshd_config.d/00-linux-tools-keyonly.conf && systemctl reload ssh
 sudo bash Debian/ssh-keyonly.sh            # 交互式菜单
 sudo bash Debian/ssh-keyonly.sh --status   # 查看当前生效的登录设置
 sudo bash Debian/ssh-keyonly.sh --restore  # 恢复原来的登录方式
+```
+
+### 6. sing-box（AnyTLS / AnyReality）
+
+- 从 sing-box 官方 apt 源安装稳定版（会校验签名密钥），AnyTLS 需要 1.12.0 以上。
+- 可配置三种模式：仅 AnyReality、仅 AnyTLS（自签证书）、两者都开。端口、密码、SNI 都可以自己填，回车用默认值，密码默认随机生成。
+- 写入前备份原配置到 `/etc/sing-box/config.json.bak`，写入后先用 `sing-box check` 检查，不通过就恢复原配置、不重启服务。
+- 配置完成后输出 `anytls://` 链接，以后也可以在菜单里再次查看。节点信息保存在 `/root/.sb_info.json`，只有 root 能读。
+- ufw 防火墙开着时，会询问是否放行端口。
+
+```bash
+sudo bash Debian/singbox.sh             # 交互式菜单
+sudo bash Debian/singbox.sh --install   # 只安装 / 升级 sing-box 程序
+sudo bash Debian/singbox.sh --link      # 显示节点链接
 ```
 
 ### 8. Go 语言

@@ -211,8 +211,14 @@ status_kernel() {
 }
 
 status_singbox() {
+    local v
     if command -v sing-box >/dev/null 2>&1; then
-        printf '%s已安装 %s%s' "$GREEN" "$(sing-box version 2>/dev/null | awk 'NR == 1 { print $NF }')" "$NC"
+        v=$(sing-box version 2>/dev/null | awk 'NR == 1 { print $NF }')
+        if systemctl is-active --quiet sing-box 2>/dev/null; then
+            printf '%s%s · 运行中%s' "$GREEN" "$v" "$NC"
+        else
+            printf '%s%s · 未运行%s' "$YELLOW" "$v" "$NC"
+        fi
     else
         printf '未安装'
     fi
@@ -304,7 +310,7 @@ show_menu() {
     item 4 "SSH 漏洞检查（CVE-2024-6387）" "只检查，不修改"
     item 5 "SSH 禁止密码登录" "$(status_ssh_login)"
     printf '\n %s软件安装%s\n' "$BOLD" "$NC"
-    item 6 "sing-box" "$(status_singbox)"
+    item 6 "sing-box（AnyTLS / AnyReality 节点）" "$(status_singbox)"
     item 7 "q（DNS 查询工具）" "$(status_q)"
     item 8 "Go 语言" "$(status_go)"
     printf '\n %s登录界面%s\n' "$BOLD" "$NC"
@@ -374,7 +380,12 @@ do_ssh_check() {
     pause
 }
 
-# 简单的软件源安装类：sing-box、q
+# singbox.sh 自带菜单（安装、配置节点、链接、卸载），出错时才停下来
+do_singbox() {
+    run_script "$SINGBOX" || pause
+}
+
+# 简单的软件源安装类：q
 do_apt_install() {
     local name=$1 script=$2 status=$3
     printf '\n%s安装 %s%s  （当前：%s）\n' "$BOLD" "$name" "$NC" "$status"
@@ -513,7 +524,7 @@ main() {
             3) do_xanmod ;;
             4) do_ssh_check ;;
             5) do_ssh_keyonly ;;
-            6) do_apt_install "sing-box" "$SINGBOX" "$(status_singbox)" ;;
+            6) do_singbox ;;
             7) do_apt_install "q" "$Q_SH" "$(status_q)" ;;
             8) do_go ;;
             9) do_motd ;;
