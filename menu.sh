@@ -32,6 +32,7 @@ XANMOD="Debian/xanmod-kernel.sh"
 SINGBOX="Debian/singbox.sh"
 Q_SH="Debian/q.sh"
 GOLANG="Debian/golong.sh"
+SWAP_SH="Debian/swap.sh"
 SSH_CHECK="ssh-check.sh"
 MOTD_DIR="/etc/update-motd.d"
 MOTD_BACKUP="/etc/motd.bak-linux-tools"
@@ -224,6 +225,18 @@ status_q() {
     fi
 }
 
+status_swap() {
+    local mb
+    mb=$(awk '/^SwapTotal:/ { print int($2 / 1024); exit }' /proc/meminfo)
+    if (( ${mb:-0} > 0 )); then
+        printf '%s已启用 %s%s · swappiness %s' "$GREEN" \
+            "$(awk -v m="$mb" 'BEGIN { if (m >= 1024) printf "%.1fG", m / 1024; else printf "%dM", m }')" \
+            "$NC" "$(cat /proc/sys/vm/swappiness 2>/dev/null)"
+    else
+        printf '%s未启用%s' "$YELLOW" "$NC"
+    fi
+}
+
 status_go() {
     if [[ -x /usr/local/go/bin/go ]]; then
         printf '%s已安装 %s%s' "$GREEN" "$(/usr/local/go/bin/go version 2>/dev/null | awk '{ print $3 }')" "$NC"
@@ -273,14 +286,15 @@ show_menu() {
     info "=============================================================="
     printf '\n %s系统维护%s\n' "$BOLD" "$NC"
     item 1 "系统清理" "旧内核、日志、缓存、Docker，逐项勾选"
-    item 2 "安装 XanMod 内核 + 网络优化" "$(status_kernel)"
-    item 3 "SSH 漏洞检查（CVE-2024-6387）" "只检查，不修改"
+    item 2 "Swap 管理" "$(status_swap)"
+    item 3 "安装 XanMod 内核 + 网络优化" "$(status_kernel)"
+    item 4 "SSH 漏洞检查（CVE-2024-6387）" "只检查，不修改"
     printf '\n %s软件安装%s\n' "$BOLD" "$NC"
-    item 4 "sing-box" "$(status_singbox)"
-    item 5 "q（DNS 查询工具）" "$(status_q)"
-    item 6 "Go 语言" "$(status_go)"
+    item 5 "sing-box" "$(status_singbox)"
+    item 6 "q（DNS 查询工具）" "$(status_q)"
+    item 7 "Go 语言" "$(status_go)"
     printf '\n %s登录界面%s\n' "$BOLD" "$NC"
-    item 7 "登录面板（motd）" "$(status_motd)"
+    item 8 "登录面板（motd）" "$(status_motd)"
     printf '\n'
     item 0 "退出" ""
     printf '\n'
@@ -300,6 +314,11 @@ do_clear() {
         *) return 0 ;;
     esac
     pause
+}
+
+# swap.sh 自带菜单，退出它就回到这里；只有出错时才停下来让你看输出
+do_swap() {
+    run_script "$SWAP_SH" || pause
 }
 
 do_xanmod() {
@@ -471,12 +490,13 @@ main() {
         read -r -p "请输入编号: " choice </dev/tty || choice=0
         case $choice in
             1) do_clear ;;
-            2) do_xanmod ;;
-            3) do_ssh_check ;;
-            4) do_apt_install "sing-box" "$SINGBOX" "$(status_singbox)" ;;
-            5) do_apt_install "q" "$Q_SH" "$(status_q)" ;;
-            6) do_go ;;
-            7) do_motd ;;
+            2) do_swap ;;
+            3) do_xanmod ;;
+            4) do_ssh_check ;;
+            5) do_apt_install "sing-box" "$SINGBOX" "$(status_singbox)" ;;
+            6) do_apt_install "q" "$Q_SH" "$(status_q)" ;;
+            7) do_go ;;
+            8) do_motd ;;
             0|q|Q) info "再见。"; exit 0 ;;
             '') ;;
             *) warn "无效编号：$choice"; sleep 1 ;;

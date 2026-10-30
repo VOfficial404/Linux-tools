@@ -1,6 +1,6 @@
 # Linux-tools
 
-面向 Debian 12 (bookworm) / Debian 13 (trixie) 服务器的一组运维脚本，通过一个交互式菜单统一调用：系统清理、XanMod 内核、sing-box、Go、SSH 漏洞检查、登录面板等。
+面向 Debian 12 (bookworm) / Debian 13 (trixie) 服务器的一组运维脚本，通过一个交互式菜单统一调用：系统清理、Swap、XanMod 内核、sing-box、Go、SSH 漏洞检查、登录面板等。
 
 > [!WARNING]
 > **本仓库的脚本和文档由 AI（Claude 和 GPT）生成，非人工编写。**
@@ -48,12 +48,13 @@ git clone https://github.com/VOfficial404/Linux-tools.git && cd Linux-tools && s
 | 编号 | 功能 | 对应脚本 | 说明 |
 |---|---|---|---|
 | 1 | 系统清理 | `Debian/clear.sh` | 先扫描并列出每一项能释放多少空间，逐项勾选、最终确认后才删除。支持预演模式 |
-| 2 | XanMod 内核 + 网络优化 | `Debian/xanmod-kernel.sh` | 按 CPU 指令集级别安装 XanMod 内核，并开启 BBR 等网络参数。仅 x86_64 |
-| 3 | SSH 漏洞检查 | `ssh-check.sh` | 检查 sshd 是否受 regreSSHion（CVE-2024-6387）影响，只检查，不修改 |
-| 4 | sing-box | `Debian/singbox.sh` | 添加 sing-box 官方 apt 源并安装或升级 |
-| 5 | q | `Debian/q.sh` | 添加官方 apt 源，安装 DNS 查询工具 [q](https://github.com/natesales/q) |
-| 6 | Go 语言 | `Debian/golong.sh` | 安装官方最新版或指定版本，带 sha256 校验 |
-| 7 | 登录面板（motd） | `update-motd/` | 安装 SSH 登录时显示的 logo 和系统信息面板 |
+| 2 | Swap 管理 | `Debian/swap.sh` | 添加、调整、删除 `/swapfile`，设置 swappiness |
+| 3 | XanMod 内核 + 网络优化 | `Debian/xanmod-kernel.sh` | 按 CPU 指令集级别安装 XanMod 内核，并开启 BBR 等网络参数。仅 x86_64 |
+| 4 | SSH 漏洞检查 | `ssh-check.sh` | 检查 sshd 是否受 regreSSHion（CVE-2024-6387）影响，只检查，不修改 |
+| 5 | sing-box | `Debian/singbox.sh` | 添加 sing-box 官方 apt 源并安装或升级 |
+| 6 | q | `Debian/q.sh` | 添加官方 apt 源，安装 DNS 查询工具 [q](https://github.com/natesales/q) |
+| 7 | Go 语言 | `Debian/golong.sh` | 安装官方最新版或指定版本，带 sha256 校验 |
+| 8 | 登录面板（motd） | `update-motd/` | 安装 SSH 登录时显示的 logo 和系统信息面板 |
 
 每个子脚本也可以不经过菜单单独运行，用法写在各自文件的开头。
 
@@ -79,14 +80,38 @@ sudo bash Debian/clear.sh --dry-run   # 照常选择，只显示将执行的命�
 sudo bash Debian/clear.sh --yes       # 不提问，按默认选中项清理（适合 cron）
 ```
 
-### 2. XanMod 内核
+### 2. Swap 管理
+
+功能参考 [spiritLHLS/addswap](https://github.com/spiritLHLS/addswap)，针对 Debian 12/13 重写：
+
+- 建议大小：内存 ≤2G 取 2 倍，≤8G 取 1 倍，更大取 4G，也可以自己填（`1G`、`512M`、纯数字按 MB）。
+- 已有 `/swapfile` 时可以直接改成新的大小。创建前会检查磁盘空间，创建后至少给系统留 1G。
+- 删除时只关闭 `/swapfile`，swap 分区和 zram 不受影响；swap 里的数据比可用内存多时会先提醒。
+- 修改 `/etc/fstab` 前先备份，只改 `/swapfile` 那一行。
+- swappiness 保存在 `/etc/sysctl.d/99-zz-swappiness.conf`。
+- 支持 ext4、xfs、btrfs（自动关闭写时复制）。不支持 zfs，也不能在 OpenVZ / LXC 等容器里添加 swap。
+
+```bash
+sudo bash Debian/swap.sh                  # 交互式菜单
+sudo bash Debian/swap.sh --add 2G         # 添加 2G（已有时改为 2G）
+sudo bash Debian/swap.sh --remove         # 删除 /swapfile
+sudo bash Debian/swap.sh --swappiness 10  # 设置 swappiness
+```
+
+在线单独运行：
+
+```bash
+bash <(wget -qO- https://raw.githubusercontent.com/VOfficial404/Linux-tools/main/Debian/swap.sh)
+```
+
+### 3. XanMod 内核
 
 - 会执行一次完整的系统升级（`dist-upgrade`），没有交换空间时创建 1G 的 `/swapfile`。
 - 按 CPU 支持的指令集自动选择 x64v1 到 x64v4，可以选择 LTS / MAIN / RT 分支。所选的包在软件源里不存在时，自动退到更低的级别或 LTS。
 - 网络参数写在 `/etc/sysctl.d/99-xanmod-optimizations.conf`，不需要时删掉这个文件即可。
 - 装完需要重启才会使用新内核。
 
-### 6. Go 语言
+### 7. Go 语言
 
 ```bash
 sudo bash Debian/golong.sh                    # 最新稳定版
@@ -95,7 +120,7 @@ sudo GO_VERSION=1.23.4 bash Debian/golong.sh  # 指定版本
 
 安装到 `/usr/local/go`，PATH 写入 `/etc/profile.d/go.sh`，重新登录后生效。
 
-### 7. 登录面板（motd）
+### 8. 登录面板（motd）
 
 装好后，每次 SSH 登录会显示：
 
@@ -123,6 +148,7 @@ apt install wtmpdb libpam-wtmpdb
 │   ├── golong.sh
 │   ├── q.sh
 │   ├── singbox.sh
+│   ├── swap.sh
 │   └── xanmod-kernel.sh
 └── update-motd/
     ├── 20-DSH            # 彩色 40×20
