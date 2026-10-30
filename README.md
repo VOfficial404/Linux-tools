@@ -1,6 +1,6 @@
 # Linux-tools
 
-面向 Debian 12 (bookworm) / Debian 13 (trixie) 服务器的一组运维脚本，通过一个交互式菜单统一调用：系统清理、Swap、XanMod 内核、sing-box、Go、SSH 漏洞检查、SSH 禁止密码登录、修改主机名、登录面板等。
+面向 Debian 12 (bookworm) / Debian 13 (trixie) 服务器的一组运维脚本，通过一个交互式菜单统一调用：系统清理、Swap、XanMod 内核、sing-box、Go、Docker、SSH 漏洞检查、SSH 禁止密码登录、修改主机名、登录面板等。
 
 > [!WARNING]
 > **本仓库的脚本和文档由 AI（Claude 和 GPT）生成，非人工编写。**
@@ -56,7 +56,8 @@ git clone https://github.com/VOfficial404/Linux-tools.git && cd Linux-tools && s
 | 7 | sing-box | `Debian/singbox.sh` | 从官方 apt 源安装，配置 AnyTLS / AnyReality 节点并生成链接 |
 | 8 | q | `Debian/q.sh` | 添加官方 apt 源，安装 DNS 查询工具 [q](https://github.com/natesales/q) |
 | 9 | Go 语言 | `Debian/golong.sh` | 安装官方最新版或指定版本，带 sha256 校验 |
-| 10 | 登录面板（motd） | `update-motd/` | 安装 SSH 登录时显示的 logo 和系统信息面板 |
+| 10 | Docker + Docker Compose | `Debian/docker.sh` | 从 Docker 官方源（或国内镜像）安装 Docker 和 Compose 插件 |
+| 11 | 登录面板（motd） | `update-motd/` | 安装 SSH 登录时显示的 logo 和系统信息面板 |
 
 每个子脚本也可以不经过菜单单独运行，用法写在各自文件的开头。
 
@@ -178,7 +179,24 @@ sudo GO_VERSION=1.23.4 bash Debian/golong.sh  # 指定版本
 
 安装到 `/usr/local/go`，PATH 写入 `/etc/profile.d/go.sh`，重新登录后生效。
 
-### 10. 登录面板（motd）
+### 10. Docker + Docker Compose
+
+```bash
+sudo bash Debian/docker.sh                                  # 交互式菜单
+sudo bash Debian/docker.sh --install                        # 不提问，按默认选项安装 / 升级
+sudo DOCKER_MIRROR=aliyun bash Debian/docker.sh --install   # 用阿里云镜像（也可以是 tuna）
+sudo bash Debian/docker.sh --uninstall                      # 卸载
+```
+
+- 按 Docker 官方文档添加 apt 源，安装 `docker-ce`、`docker-buildx-plugin`、`docker-compose-plugin` 等。Compose 是 v2 插件，命令是 `docker compose`；可选装一个 `docker-compose` 兼容命令。
+- 软件源可选 Docker 官方、阿里云、清华。软件源里没有当前系统代号时，会询问是否改用 bookworm 的包。
+- 装过系统自带的 `docker.io`、`podman-docker` 等冲突包时，会列出来确认后再卸载，`/var/lib/docker` 里的数据保留。
+- 可选配置容器日志轮转（每个容器最多 3 个 10M 文件），避免日志写满磁盘。
+- 可选把当前 sudo 用户加入 docker 组（会提醒这等同于 root 权限）。
+- 卸载时删除镜像、容器和数据卷之前会单独确认，默认保留。
+- 注意：`docker run -p` 发布的端口会绕过 ufw 直接对外开放，只想本机访问时写成 `-p 127.0.0.1:8080:80`。
+
+### 11. 登录面板（motd）
 
 装好后，每次 SSH 登录会显示：
 
@@ -203,6 +221,7 @@ apt install wtmpdb libpam-wtmpdb
 ├── ssh-check.sh
 ├── Debian/
 │   ├── clear.sh
+│   ├── docker.sh
 │   ├── golong.sh
 │   ├── hostname.sh
 │   ├── q.sh

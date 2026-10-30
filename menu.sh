@@ -35,6 +35,7 @@ GOLANG="Debian/golong.sh"
 SWAP_SH="Debian/swap.sh"
 SSH_KEYONLY="Debian/ssh-keyonly.sh"
 HOSTNAME_SH="Debian/hostname.sh"
+DOCKER_SH="Debian/docker.sh"
 SSH_CHECK="ssh-check.sh"
 MOTD_DIR="/etc/update-motd.d"
 MOTD_BACKUP="/etc/motd.bak-linux-tools"
@@ -257,6 +258,20 @@ status_ssh_login() {
     esac
 }
 
+status_docker() {
+    local v
+    if command -v docker >/dev/null 2>&1; then
+        v=$(docker --version 2>/dev/null | awk '{ gsub(",", "", $3); print $3 }')
+        if systemctl is-active --quiet docker 2>/dev/null; then
+            printf '%s%s · 运行中%s' "$GREEN" "$v" "$NC"
+        else
+            printf '%s%s · 未运行%s' "$YELLOW" "$v" "$NC"
+        fi
+    else
+        printf '未安装'
+    fi
+}
+
 status_go() {
     if [[ -x /usr/local/go/bin/go ]]; then
         printf '%s已安装 %s%s' "$GREEN" "$(/usr/local/go/bin/go version 2>/dev/null | awk '{ print $3 }')" "$NC"
@@ -315,8 +330,9 @@ show_menu() {
     item 7 "sing-box（AnyTLS / AnyReality 节点）" "$(status_singbox)"
     item 8 "q（DNS 查询工具）" "$(status_q)"
     item 9 "Go 语言" "$(status_go)"
+    item 10 "Docker + Docker Compose" "$(status_docker)"
     printf '\n %s登录界面%s\n' "$BOLD" "$NC"
-    item 10 "登录面板（motd）" "$(status_motd)"
+    item 11 "登录面板（motd）" "$(status_motd)"
     printf '\n'
     item 0 "退出" ""
     printf '\n'
@@ -530,7 +546,8 @@ main() {
             7) do_singbox ;;
             8) do_apt_install "q" "$Q_SH" "$(status_q)" ;;
             9) do_go ;;
-            10) do_motd ;;
+            10) run_script "$DOCKER_SH" || pause ;;
+            11) do_motd ;;
             0|q|Q) info "再见。"; exit 0 ;;
             '') ;;
             *) warn "无效编号：$choice"; sleep 1 ;;
