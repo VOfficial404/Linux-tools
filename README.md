@@ -1,6 +1,6 @@
 # Linux-tools
 
-面向 Debian 12 (bookworm) / Debian 13 (trixie) 服务器的一组运维脚本，通过一个交互式菜单统一调用：系统清理、Swap、XanMod 内核、sing-box、Go、Docker、SSH 漏洞检查、SSH 禁止密码登录、修改主机名、登录面板等。
+面向 Debian 12 (bookworm) / Debian 13 (trixie) 服务器的一组运维脚本，通过一个交互式菜单统一调用：系统清理、Swap、XanMod 内核、sing-box、Go、Docker、SSH 漏洞检查、SSH 禁止密码登录、修改主机名、内核漏洞 CVE-2026-98432 检测修复、登录面板等。
 
 > [!WARNING]
 > **本仓库的脚本和文档由 AI（Claude 和 GPT）生成，非人工编写。**
@@ -53,11 +53,12 @@ git clone https://github.com/VOfficial404/Linux-tools.git && cd Linux-tools && s
 | 4 | SSH 漏洞检查 | `ssh-check.sh` | 检查 sshd 是否受 regreSSHion（CVE-2024-6387）影响，只检查，不修改 |
 | 5 | SSH 禁止密码登录 | `Debian/ssh-keyonly.sh` | 只允许密钥登录，可添加公钥、一键恢复 |
 | 6 | 修改主机名 | `Debian/hostname.sh` | 修改主机名，同步 `/etc/hosts`，防止 cloud-init 重启后改回 |
-| 7 | sing-box | `Debian/singbox.sh` | 从官方 apt 源安装，配置 AnyTLS / AnyReality 节点并生成链接 |
-| 8 | q | `Debian/q.sh` | 添加官方 apt 源，安装 DNS 查询工具 [q](https://github.com/natesales/q) |
-| 9 | Go 语言 | `Debian/golong.sh` | 安装官方最新版或指定版本，带 sha256 校验 |
-| 10 | Docker + Docker Compose | `Debian/docker.sh` | 从 Docker 官方源（或国内镜像）安装 Docker 和 Compose 插件 |
-| 11 | 登录面板（motd） | `update-motd/` | 安装 SSH 登录时显示的 logo 和系统信息面板 |
+| 7 | 内核漏洞 CVE-2026-98432 | `Debian/cve-2026-98432.sh` | 检测内核是否受这个 9.8 分的远程漏洞影响，升级内核修复，或先用 nftables 临时缓解 |
+| 8 | sing-box | `Debian/singbox.sh` | 从官方 apt 源安装，配置 AnyTLS / AnyReality 节点并生成链接 |
+| 9 | q | `Debian/q.sh` | 添加官方 apt 源，安装 DNS 查询工具 [q](https://github.com/natesales/q) |
+| 10 | Go 语言 | `Debian/golong.sh` | 安装官方最新版或指定版本，带 sha256 校验 |
+| 11 | Docker + Docker Compose | `Debian/docker.sh` | 从 Docker 官方源（或国内镜像）安装 Docker 和 Compose 插件 |
+| 12 | 登录面板（motd） | `update-motd/` | 安装 SSH 登录时显示的 logo 和系统信息面板 |
 
 每个子脚本也可以不经过菜单单独运行，用法写在各自文件的开头。
 
@@ -156,7 +157,29 @@ sudo bash Debian/hostname.sh web01     # 直接修改
 - 云服务器上的 cloud-init 默认会在重启时把主机名改回去。检测到时会询问是否写入 `preserve_hostname: true`。
 - 主机名只能包含字母、数字、`-` 和 `.`，大写会自动转成小写。
 
-### 7. sing-box（AnyTLS / AnyReality）
+### 7. 内核漏洞 CVE-2026-98432
+
+[CVE-2026-98432](https://www.cve.org/CVERecord?id=CVE-2026-98432)：Linux 内核 IPv4 TCP 握手时的 use-after-free，CVSS 9.8。远程未认证的对端在 SYN 里带上 IP 选项就能触发，可能泄露或写坏内核内存、让内核崩溃。影响 4.4 以来的内核。
+
+| 系统 / 分支 | 修复版本 |
+|---|---|
+| Debian 12（linux） | 6.1.190-1（DLA-4841-1） |
+| Debian 12（linux-6.12） | 6.12.113-1~deb12u1（DLA-4850-1） |
+| Debian 13 | 6.12.113-1（DSA-6568-1） |
+| 上游 / XanMod | 5.10.272、5.15.223、6.1.190、6.6.159、6.12.113、6.18.56、7.2.10，7.3 及以上 |
+
+```bash
+sudo bash Debian/cve-2026-98432.sh           # 交互式菜单
+sudo bash Debian/cve-2026-98432.sh --check   # 只检测：0 不受影响，1 受影响，2 等待重启，3 无法判断
+sudo bash Debian/cve-2026-98432.sh --fix     # 不提问，升级内核（不自动重启）
+```
+
+- **检测**：Debian 内核按 `uname -v` 里的真实包版本（如 `6.1.176-1`）对照 Debian 安全公告；XanMod 等内核按上游版本号判断。同时列出所有已安装的内核，装了修复版但没重启时会提示。
+- **修复**：升级已安装的内核元包（`linux-image-amd64`、`linux-image-cloud-amd64`、`linux-xanmod-*` 等），然后重启。没配 Debian 安全更新源时会给出要加的那一行。
+- **临时缓解**（不用重启）：用 nftables 在 prerouting 最早阶段丢弃带 IP 选项的 IPv4 TCP 包，漏洞需要的选项就到不了 TCP 握手。正常流量几乎不带 IP 选项。开机自动加载（`lt-cve-2026-98432.service`）；`net.ipv4.tcp_migrate_req` 为 1 时会建议改成 0。升级并重启后可在菜单里移除。
+- 容器（LXC / OpenVZ）用的是宿主机内核，只能检测，修复要在宿主机上做。Ubuntu 会把补丁移植到旧版本号，脚本无法判断，请看 Ubuntu 安全公告。
+
+### 8. sing-box（AnyTLS / AnyReality）
 
 - 从 sing-box 官方 apt 源安装稳定版（会校验签名密钥），AnyTLS 需要 1.12.0 以上。
 - 可配置三种模式：仅 AnyReality、仅 AnyTLS（自签证书）、两者都开。端口、密码、SNI 都可以自己填，回车用默认值，密码默认随机生成。
@@ -170,7 +193,7 @@ sudo bash Debian/singbox.sh --install   # 只安装 / 升级 sing-box 程序
 sudo bash Debian/singbox.sh --link      # 显示节点链接
 ```
 
-### 9. Go 语言
+### 10. Go 语言
 
 ```bash
 sudo bash Debian/golong.sh                    # 最新稳定版
@@ -179,7 +202,7 @@ sudo GO_VERSION=1.23.4 bash Debian/golong.sh  # 指定版本
 
 安装到 `/usr/local/go`，PATH 写入 `/etc/profile.d/go.sh`，重新登录后生效。
 
-### 10. Docker + Docker Compose
+### 11. Docker + Docker Compose
 
 ```bash
 sudo bash Debian/docker.sh                                  # 交互式菜单
@@ -196,7 +219,7 @@ sudo bash Debian/docker.sh --uninstall                      # 卸载
 - 卸载时删除镜像、容器和数据卷之前会单独确认，默认保留。
 - 注意：`docker run -p` 发布的端口会绕过 ufw 直接对外开放，只想本机访问时写成 `-p 127.0.0.1:8080:80`。
 
-### 11. 登录面板（motd）
+### 12. 登录面板（motd）
 
 装好后，每次 SSH 登录会显示：
 
@@ -221,6 +244,7 @@ apt install wtmpdb libpam-wtmpdb
 ├── ssh-check.sh
 ├── Debian/
 │   ├── clear.sh
+│   ├── cve-2026-98432.sh
 │   ├── docker.sh
 │   ├── golong.sh
 │   ├── hostname.sh
