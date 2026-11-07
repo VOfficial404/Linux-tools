@@ -1,6 +1,6 @@
 # Linux-tools
 
-面向 Debian 12 (bookworm) / Debian 13 (trixie) 服务器的一组运维脚本，通过一个交互式菜单统一调用：系统清理、Swap、XanMod 内核、sing-box、Go、Docker、SSH 漏洞检查、SSH 禁止密码登录、修改主机名、内核漏洞 CVE-2026-98432 检测修复、登录面板等。
+面向 Debian 12 (bookworm) / Debian 13 (trixie) 服务器的一组运维脚本，通过一个交互式菜单统一调用：系统清理、Swap、XanMod 内核、sing-box、Go、Docker、SSH 漏洞检查、SSH 禁止密码登录、修改主机名、内核漏洞 CVE-2026-98432 检测修复、登录面板等；另外提供几个常用第三方脚本（网络质量测试、DD 重装系统）的快捷入口。
 
 > [!WARNING]
 > **本仓库的脚本和文档由 AI（Claude 和 GPT）生成，非人工编写。**
@@ -59,8 +59,12 @@ git clone https://github.com/VOfficial404/Linux-tools.git && cd Linux-tools && s
 | 10 | Go 语言 | `Debian/golong.sh` | 安装官方最新版或指定版本，带 sha256 校验 |
 | 11 | Docker + Docker Compose | `Debian/docker.sh` | 从 Docker 官方源（或国内镜像）安装 Docker 和 Compose 插件 |
 | 12 | 登录面板（motd） | `update-motd/` | 安装 SSH 登录时显示的 logo 和系统信息面板 |
+| 13 | TcpQuality | 第三方 [ibsgss/TcpQuality](https://github.com/ibsgss/TcpQuality) | TCP 网络质量测试 |
+| 14 | NodeQuality | 第三方 [LloydAsp/NodeQuality](https://github.com/LloydAsp/NodeQuality) | 硬件、IP 质量、网络质量、回程路由综合测试，**结果会上传** |
+| 15 | DD 重装：InstallNET.sh | 第三方 [leitbogioro/Tools](https://github.com/leitbogioro/Tools) | 网络重装 Debian 等系统，**清空系统盘** |
+| 16 | DD 重装：reinstall.sh | 第三方 [bin456789/reinstall](https://github.com/bin456789/reinstall) | 重装为各种 Linux / Windows 或 dd 镜像，**清空系统盘** |
 
-每个子脚本也可以不经过菜单单独运行，用法写在各自文件的开头。
+每个子脚本也可以不经过菜单单独运行，用法写在各自文件的开头。13–16 是第三方脚本，见下面的[第三方脚本](#13-16-第三方脚本)。
 
 ### 1. 系统清理
 
@@ -234,6 +238,26 @@ Debian 13 默认没有 `last` 命令，面板里的登录记录需要先安装�
 apt install wtmpdb libpam-wtmpdb
 ```
 
+### 13-16. 第三方脚本
+
+这 4 项**不是本仓库的脚本**，菜单只是快捷入口：每次选中时从上游下载最新版到临时目录，**原样运行，不做任何修改**，也不会打包进整合版（所以整合版用这几项时同样需要联网）。脚本内容由各自作者负责，使用前请先看上游项目的说明。
+
+菜单为它们做的事只有这些：
+
+- 下载成真实文件再用 `bash 文件 参数` 运行，不用 `bash <(curl ...)`。InstallNET.sh 出错时会执行 `bash $0`，reinstall.sh 会用 `$0` 读取自身，在 `/dev/fd/63` 上运行会出问题。
+- 把标准输入接到终端。这几个脚本用普通的 `read` 提问，用 `curl ... | bash` 打开菜单时 stdin 是管道，不接的话会读不到输入。
+- 运行前说明会做什么、询问常用参数，运行后按各脚本的实际行为解释结果（它们的退出码含义不同，见下表）。
+- Ctrl-C 只中断第三方脚本，然后回到菜单。
+
+| 编号 | 上游运行方式 | 菜单的处理 |
+|---|---|---|
+| 13 TcpQuality | `bash <(curl -fsSL https://raw.githubusercontent.com/ibsgss/TcpQuality/main/runTcpQuality.sh)` | 可以输入附加参数（如 `-v4`、`--intl`、`--all`、`--no-rootfs`），原样传给脚本。默认在临时 Debian rootfs 里测试，不往本机装软件 |
+| 14 NodeQuality | `bash <(curl -sL https://run.NodeQuality.com)` | 运行前提醒：结果会上传到 nodequality.com 生成分享链接（包含本机 IP）；它会挂载 `/proc` `/sys` `/dev` 并 chroot 到临时系统。它默认把工作目录建在**当前目录**，菜单固定加 `-d /root`。它无论成功失败都返回 1，菜单不按退出码判断，结束后检查有没有残留的工作目录 |
+| 15 InstallNET.sh | `bash InstallNET.sh -debian 13 -pwd 密码 -port 22` | 选 Debian 13 / 12 或自定义参数；密码不回显、输入两次。**不设密码时新系统用公开的默认密码 `LeitboGi0ro`**（装 Alpine 时总是用它），菜单会明确提醒。它只写好 GRUB 启动项，不会自己重启；成功和失败都返回 1，菜单请你看输出里有没有 `[Finish]` 再决定是否重启 |
+| 16 reinstall.sh | `bash reinstall.sh debian 13 --ssh-port 22` | 选 Debian 13 / 12、Ubuntu 24.04 或自定义参数（如 `alpine 3.22`、`dd --img=<网址>`、`--ssh-key <公钥>`）。用户名和密码由脚本自己询问（留空则随机生成）。GitHub 下载失败时改用 cnb.cool 镜像。成功后可选：立即重启、取消这次重装（`reinstall.sh reset`）、稍后自己重启 |
+
+两个 DD 重装脚本运行前，菜单会列出本机磁盘，并要求**输入本机主机名**确认；在容器里直接拒绝。重装会清空整块系统盘，请先备份，并确认自己会用服务商的 VNC / 控制台。
+
 ## 目录结构
 
 ```
@@ -276,6 +300,7 @@ bash build.sh
 - 为 Debian 12 和 Debian 13 编写，Ubuntu 等其他 apt 系发行版可能部分可用，但没有针对性处理。
 - 需要 bash 4 或更高版本，以及 `curl` 或 `wget`（在线版下载用）。
 - 菜单需要在交互式终端里运行。
+- 13–16 的第三方脚本运行时总是需要联网下载。
 
 ## 声明
 
