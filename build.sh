@@ -4,8 +4,9 @@
 #
 # 用法：bash build.sh
 #
-# 修改了 menu.sh 或任何子脚本之后，都要重新运行一次，再把 linux-tools.sh 一起提交。
-# 本脚本只读取仓库里的文本文件、写出 linux-tools.sh，不会修改系统，不需要 root。
+# 修改了 menu.sh、lib/ 或任何子脚本之后，都要重新运行一次，再把改动和 linux-tools.sh 一起提交。
+# 它先把 lib/ 里的公共界面代码同步进 menu.sh 和各子脚本，再生成整合版。
+# 本脚本只读写仓库里的文本文件，不会修改系统，不需要 root。
 #
 # 每个子脚本会变成一个函数，例如 Debian/clear.sh -> payload_Debian_clear_sh，
 # 函数用带引号的 here-document 原样输出文件内容；menu.sh 里的 fetch_script 会优先用它们。
@@ -22,6 +23,38 @@ die() { echo "错误：$*" >&2; exit 1; }
 grep -qxF "$MARKER" menu.sh || die "menu.sh 里找不到标记行：$MARKER"
 
 shopt -s nullglob
+
+# ---- 第一步：把 lib/ 里的公共代码同步进各脚本 ----
+# 每个脚本都要能单独下载运行，所以公共的界面代码在每个脚本里各有一份，
+# 夹在 "# >>> lib/xxx.sh >>>" 和 "# <<< lib/xxx.sh <<<" 两行之间。这里用 lib/ 的最新内容替换它们。
+synced=0
+for lib in lib/*.sh; do
+  start="# >>> $lib >>>"
+  end="# <<< $lib <<<"
+  [[ $(head -n 1 "$lib") == "$start" && $(tail -n 1 "$lib") == "$end" ]] \
+    || die "$lib 的第一行和最后一行必须是 $start / $end"
+  for f in menu.sh Debian/*.sh ssh-check.sh; do
+    grep -qxF "$start" "$f" || continue
+    grep -qxF "$end" "$f" || die "$f 里有 $start 但没有 $end"
+    awk -v lib="$lib" -v start="$start" -v end="$end" '
+      $0 == start { while ((getline l < lib) > 0) print l; close(lib); skip = 1; next }
+      skip && $0 == end { skip = 0; next }
+      !skip { print }
+    ' "$f" > "$f.sync"
+    if cmp -s "$f.sync" "$f"; then
+      rm -f "$f.sync"
+    else
+      cat "$f.sync" > "$f"   # 用 cat 写回，保留原文件的权限
+      rm -f "$f.sync"
+      bash -n "$f" || die "同步 $lib 后 $f 有语法错误"
+      echo "已同步 $lib -> $f"
+      synced=$(( synced + 1 ))
+    fi
+  done
+done
+echo "公共代码同步完成：更新了 $synced 处"
+
+# ---- 第二步：生成整合版 ----
 files=(Debian/* ssh-check.sh update-motd/*)
 (( ${#files[@]} )) || die "没有找到任何子脚本"
 
