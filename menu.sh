@@ -49,6 +49,7 @@ SSH_CHECK="ssh-check.sh"
 # 第三方脚本：不在本仓库里，也不打包进整合版，每次都从上游原样下载最新版运行，不做任何修改
 TCPQUALITY_URL="https://raw.githubusercontent.com/ibsgss/TcpQuality/main/runTcpQuality.sh"
 NODEQUALITY_URL="https://run.NodeQuality.com"
+REGIONCHECK_URL="https://raw.githubusercontent.com/1-stream/RegionRestrictionCheck/main/check.sh"
 INSTALLNET_URL="https://raw.githubusercontent.com/leitbogioro/Tools/master/Linux_reinstall/InstallNET.sh"
 REINSTALL_URL="https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh"
 REINSTALL_URL_CN="https://cnb.cool/bin456789/reinstall/-/git/raw/main/reinstall.sh"
@@ -839,8 +840,9 @@ build_main_menu() {
     menu_group "第三方脚本" "运行时从上游下载，原样执行"
     menu_item 13 "TcpQuality 网络质量"     "info|ibsgss/TcpQuality"
     menu_item 14 "NodeQuality 综合测试"    "warn|结果会上传到 nodequality.com"
-    menu_item 15 "DD 重装：InstallNET"     "danger|清空系统盘 $G_DOT leitbogioro/Tools"
-    menu_item 16 "DD 重装：reinstall"      "danger|清空系统盘 $G_DOT bin456789/reinstall"
+    menu_item 15 "流媒体解锁检测"          "info|1-stream/RegionRestrictionCheck"
+    menu_item 16 "DD 重装：InstallNET"     "danger|清空系统盘 $G_DOT leitbogioro/Tools"
+    menu_item 17 "DD 重装：reinstall"      "danger|清空系统盘 $G_DOT bin456789/reinstall"
     menu_blank
     menu_item 0  "退出"
 }
@@ -1193,6 +1195,29 @@ do_nodequality() {
     pause
 }
 
+do_regioncheck() {
+    local path rc
+    page "流媒体解锁检测"
+    info " ${DIM}第三方脚本 github.com/1-stream/RegionRestrictionCheck，从上游下载，原样运行${NC}"
+    printf '\n'
+    info " 检测本机 IP 能否使用 Netflix、Disney+、YouTube Premium、ChatGPT 等各地区的流媒体和 AI 平台。"
+    info " 开始后会让你选检测地区（台湾、香港、日本、北美、欧洲、AI 平台等），直接回车 = 全部地区。"
+    info " 本机没有 python3 或 jq 时，它会用 apt 自动安装。检测结果只显示在屏幕上，不上传。"
+    printf '\n'
+    info " 常用参数：-M 4（只测 IPv4）、-M 6（只测 IPv6）、-E（英文输出）、-I <网卡>、-P <代理地址>"
+    printf '\n'
+    read_args "附加参数（直接回车 = 默认）: "
+    path=$(fetch_remote RegionRestrictionCheck.sh "$REGIONCHECK_URL") || { pause; return; }
+    run_remote "$path" "${ARGS[@]}"
+    rc=$?
+    case $rc in
+        0)   ok "流媒体解锁检测执行完毕" ;;
+        130) warn "已中断（Ctrl-C）" ;;
+        *)   warn "RegionRestrictionCheck 退出码 $rc，请查看上面的输出" ;;
+    esac
+    pause
+}
+
 # 两个重装脚本共用：容器里不能重装
 dd_container_check() {
     (( IS_CONTAINER )) || return 0
@@ -1388,8 +1413,9 @@ main() {
             12) do_motd ;;
             13) do_tcpquality ;;
             14) do_nodequality ;;
-            15) do_installnet ;;
-            16) do_reinstall ;;
+            15) do_regioncheck ;;
+            16) do_installnet ;;
+            17) do_reinstall ;;
             *)  clear_screen; info "再见。"; exit 0 ;;
         esac
     done
